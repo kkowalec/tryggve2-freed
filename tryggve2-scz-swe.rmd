@@ -87,7 +87,7 @@ library(lubridate)
 
 Sys.setenv(TZ="Europe/Stockholm")
 
-hdr <- fread("~/Documents/Projects/1.Tx.Resistance/CRIME3.S3/crime3-data/patient_dia_scz.txt", sep="\t") %>%
+hdr <- fread("~/xx.tsv", sep="\t") %>%
   as_tibble() %>%
   rename("id"="LOPNR",
          "admit.date"="DATUM", # date of admission
