@@ -67,7 +67,7 @@ analysis
 ***
 
 ### Step 0: Load R packages
-```{r}
+```{r R packages}
 library(dplyr)
 library(data.table)
 library(ggplot2)
@@ -94,7 +94,7 @@ Other registers:
 10. Civil register (civil) - need
 
 Add full path for each dataset <- REQUIRE EDITING on the file path
-```{r}
+```{r specify file path}
 # Required:
 hdr.f <- "/Volumes/projects/S3/S3_Research/tryggve2/tryggve_psych_v_npr.tsv"
 pop.f <- "/Volumes/projects/S3/S3_Research/tryggve2/tryggve_psych_v_indiv.tsv"
@@ -111,8 +111,15 @@ grades.f <- "/Volumes/projects/S3/S3_Research/tryggve2/tryggve_psych_v_grades.ts
 ```
 
 Read in register data & Recode variables <- REQUIRE EDITING on the original variable names!
-```{r warning=FALSE, message=FALSE}
 
+1.1 Hospital discharge data (hdr)
++ Required Variables:  
+    + unique ID - rename as "id"  
+    + date of admission - rename as "admit.date"
+    + SOURCE: inpatient (=1) / outpatient (=2) - recode & rename as "inpatient" (inpatient=1; outpatient=0)
+    + ICD version - rename as "icd.version"
+    + ICD code - rename as "diagnosis"
+```{r Read in hospital discharge register}
 hdr <- fread(hdr.f, sep="\t") %>%
   as_tibble() %>%
   rename("id"="LOPNR",
@@ -121,17 +128,40 @@ hdr <- fread(hdr.f, sep="\t") %>%
          "icd.version"="ICD",
          "diagnosis"="DIA") %>% # ICD diagnostic code
   mutate(inpatient = ifelse(inpatient == 2, 0, 1)) #recode such that inpatient == 1 and outpatient == 0
+```
 
-pop <- fread("~/pop.tsv", sep="\t") %>%
+1.2 Population register (pop)
++ Required Variables:  
+  + unique ID - rename as "id"  
+  + Sex (1 = male, 2 = female) - rename as "sex"  
+  + Birth country - rename as "birth.country"
+    + Sweden
+    + Nordic not Sweden
+    + EU28 not Nordic
+    + Europe not EU28 not Nordic
+    + Africa
+    + North America
+    + South America
+    + Asia
+    + Oceania
+    + Soviet union
+  + Birth county - rename as "birth.county" <- may skip
+  + Birth year and month (yyyymm) - add 15th as day of the month & rename as "birth.date"
+```{r read in population register}
+pop <- fread(pop.f, sep="\t") %>%
   as_tibble() %>%
   rename("id"="LOPNR",
          "sex"="KON", # 1 = male, 2 = female
          "birth.country"="FODELSEGRUPP",
-         "swe.birth.county"="FODELSELAN") %>%
-  mutate(swe.birth.county = ifelse(swe.birth.county == 2, 1, swe.birth.county), # account for recategorisation as per Amir
-    swe.birth.county = ifelse(swe.birth.county == 11, 12, swe.birth.county),
-    swe.birth.county = ifelse(swe.birth.county %in% c(15, 16), 14, swe.birth.county))
+         "birth.county"="FODELSELAN",
+         "birth.date"="FODELSEDATUM") %>%
+  mutate(birth.date = paste(as.character(birth.date),"15",sep=""))  # add 15th as day of the month
+# Q for KK: skip the following?? 
+#  mutate(swe.birth.county = ifelse(swe.birth.county == 2, 1, swe.birth.county), # account for recategorisation as per Amir
+#    swe.birth.county = ifelse(swe.birth.county == 11, 12, swe.birth.county),
+#    swe.birth.county = ifelse(swe.birth.county %in% c(15, 16), 14, swe.birth.county))
 
+# Q for KK: skip the following?? 
 pop$birth.country <- as.factor(pop$birth.country)
 levels(pop$birth.country) <-
   c(
@@ -171,39 +201,95 @@ levels(pop$birth.county) <-
     "Vasterbotten",
     "Norrbotten"
   )
+```
 
-  
-death <- fread("~/death.tsv", sep="\t") %>%
+1.3 Death register (death)
++ Required Variables:  
+  + unique ID - rename as "id"  
+  + date of death (yyyymmdd) - rename as "dod"
+```{r read in cause of death register}
+death <- fread(death.f, sep="\t") %>%
   as_tibble() %>%
   rename("id"="LOPNR",
-         "death.cause"="CAUSE",
-         "icd.version"="ICD_NR",
-         "dod"="X_DODSDAT")
+         "dod"="X_DODSDATUM")
 
-migrate <- fread("~/migrate.tsv", sep="\t") %>%
+# "death.cause"="CAUSE",
+# "icd.version"="ICD_NR",
+```
+
+1.4 Migration register (migrate): date of emigration/immigration
++ Required Variables:
+  + unique ID - rename as "id"  
+  + Migration date (yyyymm) - add 15th as day of the month & rename as  "migration date"
+  + Migration type (E=emigration, I=immigration) - rename as "migrate.type"
+```{r read in migration register}
+migrate <- fread(migrate.f, sep="\t") %>%
   as_tibble() %>%
   rename("id"="LOPNR",
-         "migrate.data"="MDATUM",
-         "migrate.type"="MTYP") # (E=emigration, I=immigration)
+         "migrate.date"="MDATUM",
+         "migrate.type"="MTYP") %>% # (E=emigration, I=immigration)
+  mutate(migrate.date = paste(as.character(migrate.date),"15",sep=""))
+```
 
-family <- fread("~/family.tsv", sep="\t") %>%
+1.5 Multi-generation register (parent + child): personnummer of index case and personnummer of child/parents
++ Required Variables:
+  + unique ID - rename as "id"  
+  + ID of mother - rename as "mom.id"  
+  + ID of father - rename as "dad.id"  
+  + ID of child - rename as "kid.id"  
+```{r read in multigeneration register}
+parent <- fread(parent.f, sep="\t") %>%
   as_tibble() %>%
-  rename("id"=="LOPNR",
+  rename("id"="LOPNR",
          "mom.id"="LOPNRMOR",
-         "dad.id"="LOPNRFAR",
-         "kid.id"="LOPNRBARN")
+         "dad.id"="LOPNRFAR")
 
-birth <- fread("~/birth.tsv", sep="\t") %>%
+child <- fread(child.f, sep="\t") %>%
+  as_tibble() %>%
+  rename("id"="LOPNR",
+         "kid.id"="LOPNRBARN")
+```
+
+1.6. Medical birth register (birth): containing birth outcomes
++ Required Variables:
+  + Individual number (child) - rename as "kid.id"  
+  + Individual number (mother) - rename as "mom.id"  
+  + Mothers age at child birth (years) - rename as "mom.age.at.birth"  
+```{r read in medical birth register}
+birth <- fread(birth.f, sep="\t") %>%
   as_tibble() %>%
   rename("mom.id"="LOPNRMOR",
          "kid.id"="LOPNRBARN",
          "mom.age.at.birth"="MALDER")
+```
 
-education <- fread("~/education.tsv", sep="\t") %>%
+1.7 Education (education): from LISA register
++ Required Variables:
+  + unique ID - rename as "id"  
+  + highest education level - rename as "edlevel"  
+```{r read in education levels}
+education <- fread(education.f, sep="\t") %>%
   as_tibble() %>%
   rename("id"="LOPNR",
          "edlevel"="SUN2000NIVA")
+```
 
+1.8 Grade 9 grades (grades)
++ Required Variables:
+  + unique ID - rename as "id"  
+  + graduation year - rename as "grad.yr"
+  + ... <- TO FILL IN
+```{r read in 9th grade scores} 
+grades <- fread(grades.f, sep="\t") %>%
+  as_tibble() %>%
+  rename("id"="LOPNR",
+         "grad.yr"="AVGAR",
+         "avg.grade.fr88"="MEDELBETYG", # MEDELBETYG	Average grade (1988-1997, min-max=0,0-5,0)
+         "merit.grade.fr98"="MERITVARDE") #  MERITVARDE	Merit rating (1998-, best 16 subjects, min-max=0-320)
+```
+
+Other registers <- SKIP FOR NOW 
+```{r read in other}
 civil <- fread("~/civil.tsv",sep="\t") %>%
   as_tibble() %>%
   rename("id"="LOPNR",
@@ -244,12 +330,6 @@ drug <- fread("~/drug.tsv", sep="\t") %>%
          "strength_enh"="STYRKA_ENH",
          "strength_num"="STYRKNUMERIC")
 
-grades <- fread("~/grades.tsv", sep="\t") %>%
-  as_tibble() %>%
-  rename("id"="LOPNR",
-         "grad.yr"="AVGAR",
-         "avg.grade.fr88"="MEDELBETYG", # MEDELBETYG	Average grade (1988-1997, min-max=0,0-5,0)
-         "merit.grade.fr98"="MERITVARDE") #  MERITVARDE	Merit rating (1998-, best 16 subjects, min-max=0-320)
 ```
 ### Step 2: Create data frame with SCZ cases, date of first and second SCZ admission and age at these dates
 
@@ -272,6 +352,9 @@ scz <- scz %>%
          age.first.scz = as.numeric((first_scz_date - dob)/365.25),
          mutate(age.second.scz = as.numeric((second_scz_date - dob)/365.25))) %>%
   ungroup()
+
+```
+
 
 # if no second_scz_date, exclude them
 
