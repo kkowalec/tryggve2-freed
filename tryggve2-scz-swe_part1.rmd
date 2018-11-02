@@ -68,16 +68,38 @@ analysis
 
 ### Step 1: Load data & packages
 
+Essential registers:
 1. Hospital discharge data (hdr): all in-/out-patient hospitalisation codes, multiple lines per person, contains date of admission/discharge
 2. Population register (pop): birth date, sex, birth country and Swedish birth county 
 3. Death register (death): date of death, causes of death
 4. Migration register (migrate): date of emigration/immigration
 5. Multi-generation register (family): personnummer of index case and personnummer of child/parents
+   - SWE: two files, parent & child
 6. Medical birth register (birth): containing birth outcomes
-7. Drug register (drug): All prescriptions redeemed between 7/2005-12/2014, with ATC codes/drug names)
-8. Education (education): from LISA register; Svensk utbildningsnomenklatur (SUN) or Swedish education nomenclature
-9. Grade 9 grades (grades): need?
+7. Education (education): from LISA register; Svensk utbildningsnomenklatur (SUN) or Swedish education nomenclature
+
+Other registers:
+8. Grade 9 grades (grades): need?
+9. Drug register (drug): All prescriptions redeemed between 7/2005-12/2014, with ATC codes/drug names)
 10. Civil register (civil) - need
+
+Add full path for each dataset <- REQUIRE EDITING
+```{r}
+# Required:
+hdr.f <- "/Volumes/projects/S3/S3_Research/tryggve2/tryggve_psych_v_npr.tsv"
+pop.f <- "/Volumes/projects/S3/S3_Research/tryggve2/tryggve_psych_v_indiv.tsv"
+death.f <- "/Volumes/projects/S3/S3_Research/tryggve2/tryggve_psych_v_death.tsv"
+migrate.f <- "/Volumes/projects/S3/S3_Research/tryggve2/tryggve_psych_v_migrate.tsv"
+parent.f <- "/Volumes/projects/S3/S3_Research/tryggve2/tryggve_psych_v_parent.tsv"
+child.f <- "/Volumes/projects/S3/S3_Research/tryggve2/tryggve_psych_v_child.tsv"
+birth.f <- "/Volumes/projects/S3/S3_Research/tryggve2/tryggve_psych_v_mbr.tsv"
+education.f <- "/Volumes/projects/S3/S3_Research/tryggve2/tryggve_psych_v_education.tsv"
+
+# Other:
+grades.f <- "/Volumes/projects/S3/S3_Research/tryggve2/tryggve_psych_v_grades.tsv"
+
+```
+
 
 ```{r warning=FALSE, message=FALSE}
 library(dplyr)
@@ -87,7 +109,7 @@ library(lubridate)
 
 Sys.setenv(TZ="Europe/Stockholm")
 
-hdr <- fread("~/xx.tsv", sep="\t") %>%
+hdr <- fread("", sep="\t") %>%
   as_tibble() %>%
   rename("id"="LOPNR",
          "admit.date"="DATUM", # date of admission
