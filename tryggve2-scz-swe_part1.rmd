@@ -66,7 +66,17 @@ analysis
 
 ***
 
-### Step 1: Load data & packages
+### Step 0: Load R packages
+```{r}
+library(dplyr)
+library(data.table)
+library(ggplot2)
+library(lubridate)
+
+Sys.setenv(TZ="Europe/Stockholm")
+```
+
+### Step 1: Load data
 
 Essential registers:
 1. Hospital discharge data (hdr): all in-/out-patient hospitalisation codes, multiple lines per person, contains date of admission/discharge
@@ -83,7 +93,7 @@ Other registers:
 9. Drug register (drug): All prescriptions redeemed between 7/2005-12/2014, with ATC codes/drug names)
 10. Civil register (civil) - need
 
-Add full path for each dataset <- REQUIRE EDITING
+Add full path for each dataset <- REQUIRE EDITING on the file path
 ```{r}
 # Required:
 hdr.f <- "/Volumes/projects/S3/S3_Research/tryggve2/tryggve_psych_v_npr.tsv"
@@ -100,24 +110,17 @@ grades.f <- "/Volumes/projects/S3/S3_Research/tryggve2/tryggve_psych_v_grades.ts
 
 ```
 
-
+Read in register data & Recode variables <- REQUIRE EDITING on the original variable names!
 ```{r warning=FALSE, message=FALSE}
-library(dplyr)
-library(data.table)
-library(ggplot2)
-library(lubridate)
 
-Sys.setenv(TZ="Europe/Stockholm")
-
-hdr <- fread("", sep="\t") %>%
+hdr <- fread(hdr.f, sep="\t") %>%
   as_tibble() %>%
   rename("id"="LOPNR",
          "admit.date"="DATUM", # date of admission
          "inpatient"="SOURCE", # inpatient (1) or outpatient (2)
          "icd.version"="ICD",
          "diagnosis"="DIA") %>% # ICD diagnostic code
-  mutate(inpatient = ifelse(inpatient == 2, 0, 1)) %>% #recode such that inpatient == 1 and outpatient == 0
-  select(-s3cnt) # extra variable from previous study, dont use
+  mutate(inpatient = ifelse(inpatient == 2, 0, 1)) #recode such that inpatient == 1 and outpatient == 0
 
 pop <- fread("~/pop.tsv", sep="\t") %>%
   as_tibble() %>%
