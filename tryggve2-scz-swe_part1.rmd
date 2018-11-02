@@ -1,0 +1,363 @@
+---
+title: "Tryggve2 - Schizophrenia - Sweden - "
+author: "Kaarina Kowalec, kaarina.kowalec@ki.se"
+date: "October 2018"
+output: 
+  html_document: 
+    fig_caption: yes
+    theme: simplex
+    highlight: zenburn
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+### Motivation and Overview
+
+NOTE: NOT RUN
+
+Examine variables associated with poor outcomes in schizophrenia, using first, the Swedish National Registers. In this report, I will present some initial coding for the analyses.
+
+**Overview**
+
+1. Import data
+2. Create a dataframe with all necessary variables including exposures and outcomes
+3. Analyses
+
+**Exposures or Predictors**
+1) Family of origin:
++ parental ages at birth ##LY
++ parental SES-education-occupation-income
++ birth order
++ family composition (number of parents/partners, parental criminality-incarceration, divorce, siblings, out-of-home placement)
+
+2) Childhood trauma: ##LY
++ parental death
++ severe medical illness of parents/sibs
+
+3) Education: done-kk
++ educational attainment
++ standardized testing in grade 9
+
+4) Prior personal medical history:
++ comorbid disorders and medication use ##kk
++ prior personal medical history (somatic disorders) #kk
++ childhood hospitalization
+
+5) Family history of psychiatric disorder ##kk
++ MD, BIP, psychosis, suicide in first-degree relatives
+
+6) Genetic risk factors  NOT NOW
++ GRS of MDD, SCZ, BIP, IQ etc.
+
+**Outcomes**
++ the number of psychiatric hospitalizations and outpatient contacts 
++ the number of somatic healthcare utilization
++ indication of 2nd or 3rd line treatments (pharmacological augmentation, ECT, TMS, DBS, clozapine) 
++ suicide or suicide attempt
+
+**TO DOs**
+
+cut down this doc into 4 separate RMD (eventually):
+outcome
+exposure/risk factors
+basics
+analysis
+
+***
+
+### Step 1: Load data & packages
+
+1. Hospital discharge data (hdr): all in-/out-patient hospitalisation codes, multiple lines per person, contains date of admission/discharge
+2. Population register (pop): birth date, sex, birth country and Swedish birth county 
+3. Death register (death): date of death, causes of death
+4. Migration register (migrate): date of emigration/immigration
+5. Multi-generation register (family): personnummer of index case and personnummer of child/parents
+6. Medical birth register (birth): containing birth outcomes
+7. Drug register (drug): All prescriptions redeemed between 7/2005-12/2014, with ATC codes/drug names)
+8. Education (education): from LISA register; Svensk utbildningsnomenklatur (SUN) or Swedish education nomenclature
+9. Grade 9 grades (grades): need?
+10. Civil register (civil) - need
+
+```{r warning=FALSE, message=FALSE}
+library(dplyr)
+library(data.table)
+library(ggplot2)
+library(lubridate)
+
+Sys.setenv(TZ="Europe/Stockholm")
+
+hdr <- fread("~/xx.tsv", sep="\t") %>%
+  as_tibble() %>%
+  rename("id"="LOPNR",
+         "admit.date"="DATUM", # date of admission
+         "inpatient"="SOURCE", # inpatient (1) or outpatient (2)
+         "icd.version"="ICD",
+         "diagnosis"="DIA") %>% # ICD diagnostic code
+  mutate(inpatient = ifelse(inpatient == 2, 0, 1)) %>% #recode such that inpatient == 1 and outpatient == 0
+  select(-s3cnt) # extra variable from previous study, dont use
+
+pop <- fread("~/pop.tsv", sep="\t") %>%
+  as_tibble() %>%
+  rename("id"="LOPNR",
+         "sex"="KON", # 1 = male, 2 = female
+         "birth.country"="FODELSEGRUPP",
+         "swe.birth.county"="FODELSELAN") %>%
+  mutate(swe.birth.county = ifelse(swe.birth.county == 2, 1, swe.birth.county), # account for recategorisation as per Amir
+    swe.birth.county = ifelse(swe.birth.county == 11, 12, swe.birth.county),
+    swe.birth.county = ifelse(swe.birth.county %in% c(15, 16), 14, swe.birth.county))
+
+pop$birth.country <- as.factor(pop$birth.country)
+levels(pop$birth.country) <-
+  c(
+    "Sweden",
+    "Nordic not Sweden",
+    "EU28 not Nordic",
+    "Europe not EU28 not Nordic",
+    "Africa",
+    "North America",
+    "South America",
+    "Asia",
+    "Oceania",
+    "Soviet union"
+  )
+
+# urban vs rural birth?
+levels(pop$birth.county) <-
+  c("Stockholm County",
+    "Uppsala",
+    "Sodermanland",
+    "Vastergotland",
+    "Jonkoping",
+    "Kronoberg",
+    "Kalmar",
+    "Gotland",
+    "Blekinge",
+    "Skane",
+    "Halland",
+    "Vastra Gotaland",
+    "Varmland",
+    "Orebro",
+    "Vastmanland",
+    "Dalarna",
+    "Gavleborg",
+    "Vasternorrland",
+    "Jamtland",
+    "Vasterbotten",
+    "Norrbotten"
+  )
+
+  
+death <- fread("~/death.tsv", sep="\t") %>%
+  as_tibble() %>%
+  rename("id"="LOPNR",
+         "death.cause"="CAUSE",
+         "icd.version"="ICD_NR",
+         "dod"="X_DODSDAT")
+
+migrate <- fread("~/migrate.tsv", sep="\t") %>%
+  as_tibble() %>%
+  rename("id"="LOPNR",
+         "migrate.data"="MDATUM",
+         "migrate.type"="MTYP") # (E=emigration, I=immigration)
+
+family <- fread("~/family.tsv", sep="\t") %>%
+  as_tibble() %>%
+  rename("id"=="LOPNR",
+         "mom.id"="LOPNRMOR",
+         "dad.id"="LOPNRFAR",
+         "kid.id"="LOPNRBARN")
+
+birth <- fread("~/birth.tsv", sep="\t") %>%
+  as_tibble() %>%
+  rename("mom.id"="LOPNRMOR",
+         "kid.id"="LOPNRBARN",
+         "mom.age.at.birth"="MALDER")
+
+education <- fread("~/education.tsv", sep="\t") %>%
+  as_tibble() %>%
+  rename("id"="LOPNR",
+         "edlevel"="SUN2000NIVA")
+
+civil <- fread("~/civil.tsv",sep="\t") %>%
+  as_tibble() %>%
+  rename("id"="LOPNR",
+         "year"="AR",
+         "civil.status"="CIVIL") %>%
+  mutate(civil.status == case_when(civil.status == 1 ~ "Unmarried",
+                                   civil.status == 2 ~ "Married man",
+                                   civil.status == 3 ~ "Married woman, not cohabiting",
+                                   civil.status == 4 | civil.status == "RP" ~ "Divorced",
+                                   civil.status == 5 ~ "Widow/Widower",
+                                   civil.status == 7 ~ "Married woman, cohabiting",
+                                   civil.status == 8 ~ "Child, <18 years",
+                                   civil.status == 9 ~ "Fosterchild, <18 years",
+                                   civil.status == "EP" ~ "Surviving partner",
+                                   civil.status == "G" ~ "Married",
+                                   civil.status == "OG" ~ "Registered partner",
+                                   civil.status == "SP" ~ "Divorced partner",
+                                   civil.status == "─" ~ "Widow/Widower",
+                                   TRUE ~ NA))
+
+######################################
+######### ONLY AVAILABLE IN SWEDEN ###
+######################################
+
+# drug register not need by other countries 
+drug <- fread("~/drug.tsv", sep="\t") %>%
+  as_tibble() %>%
+  rename("id"="LOPNR",
+         "num.pkg"="ANTAL",
+         "atc"="ATC",
+         "ddd"="DDDFORP",
+         "dose"="DOSER", #free text
+         "disp.date"="EDATUM", # (yyyy-mm-dd)
+         "pkg.size"="FORPSTL",
+         "admin.route"="LFORMGRUPP", #  +formula of medication, grouped: 7=cutaneous/transdermal, 14=rectal, 12=unspecified, 9=oral/fast
+         "drug.prod"="PRODUKTNAMN", # product name
+         "strength_alf"="STYRKA_ALF",
+         "strength_enh"="STYRKA_ENH",
+         "strength_num"="STYRKNUMERIC")
+
+grades <- fread("~/grades.tsv", sep="\t") %>%
+  as_tibble() %>%
+  rename("id"="LOPNR",
+         "grad.yr"="AVGAR",
+         "avg.grade.fr88"="MEDELBETYG", # MEDELBETYG	Average grade (1988-1997, min-max=0,0-5,0)
+         "merit.grade.fr98"="MERITVARDE") #  MERITVARDE	Merit rating (1998-, best 16 subjects, min-max=0-320)
+```
+### Step 2: Create data frame with SCZ cases, date of first and second SCZ admission and age at these dates
+
+```{r message=FALSE}
+
+scz <- hdr %>%
+  filter((ICD != 10 & substr(DIA,1,3) == "295") | # use grep and refine codes over time
+          (ICD == 10 & substr(DIA,1,3) == "F20") |
+           (ICD == 10 & substr(DIA,1,3) == "F25")) %>%
+  mutate(scz = 1,
+         scz_date = ymd(as.character(DATUM))) %>% # date of admission with SCZ as discharge dx
+  add_count(LOPNR) %>% 
+  mutate(nsczcontacts = n, n=NULL) # n=null removes the original n variable
+
+scz <- scz %>%
+  arrange(LOPNR, scz_date) %>%
+  group_by(LOPNR) %>%
+  mutate(first_scz_date = first(scz_date),
+         second_scz_date = nth(scz_date, 2),
+         age.first.scz = as.numeric((first_scz_date - dob)/365.25),
+         mutate(age.second.scz = as.numeric((second_scz_date - dob)/365.25))) %>%
+  ungroup()
+
+# if no second_scz_date, exclude them
+
+## scz hospitalisations
+## need to add MVO code == 9 (for psychiatric in/outpatient)
+
+sczinpt <- scz %>%
+  filter(SOURCE == 1) %>%
+  add_count(LOPNR) %>%
+  rename(nsczinpt = n) %>% 
+  arrange(LOPNR) %>%
+  group_by(LOPNR) %>%
+  slice(1) %>%
+  select(-X_PID, -X_DID, -DIA, -SOURCE, -DATUM, -ICD, -scz_date, -first_scz_date)
+
+sczoutpt <- scz %>%
+  filter(SOURCE == 2) %>%
+  add_count(LOPNR) %>%
+  rename(nsczoutpt = n) %>% 
+  arrange(LOPNR) %>%
+  group_by(LOPNR) %>%
+  slice(1) %>%
+  select(-X_PID, -X_DID, -DIA, -SOURCE, -DATUM, -ICD, -scz_date, -first_scz_date)
+
+scz <- left_join(scz, sczinpt)
+
+scz <- left_join(scz, sczoutpt, by = "LOPNR")
+
+scz <- scz %>%
+  mutate(nsczcontacts.x = ifelse(is.na(nsczcontacts.x), nsczcontacts.y, nsczcontacts.x)) %>%
+  select(-nsczcontacts.y) %>%
+  rename(nsczcontacts = nsczcontacts.x) %>%
+  mutate(nsczoutpt = ifelse(is.na(nsczoutpt), 0, nsczoutpt)) %>%
+  mutate(nsczinpt = ifelse(is.na(nsczinpt), 0, nsczinpt))
+
+
+```
+
+
+
+### Step 3: Demographics: sex, death, emigration
+
+```{r}
+###############################
+# DOB #########################
+###############################
+
+# add 15 to date (14 to those in Feb, birth.yr = yyyymm)
+scz$birth.yr <- as.character(scz$birth.yr)
+
+scz <- scz %>%
+  mutate(feb.birth = str_extract(birth.yr, "[:digit:]{4}02"))
+
+scz$feb.birth <- sapply(scz$feb.birth, paste0, "14")
+
+scz <- scz %>%
+  mutate(feb.birth = gsub("NA14", NA, feb.birth))
+
+scz$birth.yr <- sapply(scz$birth.yr, paste0, "15")
+
+scz <- scz %>%
+  mutate(birth.yr = ifelse(!is.na(feb.birth), feb.birth, birth.yr))
+ 
+###############################
+# Death #######################
+###############################
+
+death <- death %>%
+  mutate(deathdate = ymd(as.character(X_DODSDAT))) %>%
+  select(-X_DODSDAT)
+
+scz <- left_join(scz, death) # join in data with main population
+
+###############################
+# Date of Emigration ##########
+###############################
+
+# select only those born in respective countries?
+
+migrate <- migrate %>%
+  filter(MTYP == "E")
+  
+migrate$MDATUM <- as.character(migrate$MDATUM)
+
+migrate <- migrate %>%
+  mutate(feb.birth = str_extract(MDATUM, "[:digit:]{4}02"))
+
+migrate$feb.birth <- sapply(migrate$feb.birth, paste0, "14")
+
+migrate <- migrate %>%
+  mutate(feb.birth = gsub("NA14", NA, feb.birth))
+
+migrate$MDATUM <- sapply(migrate$MDATUM, paste0, "15")
+
+migrate <- migrate %>%
+  mutate(MDATUM = ifelse(!is.na(feb.birth), feb.birth, MDATUM))
+
+migrate <- migrate %>%
+  mutate(emig.date = ymd(as.character(MDATUM))) %>%
+  select(-MDATUM, -feb.birth)
+
+migrate <- migrate %>%
+  arrange(LOPNR, emig.date) %>%
+  group_by(LOPNR) %>%
+  mutate(emig.date = first(emig.date)) %>%
+  ungroup()
+
+migrate <- migrate %>%
+  arrange(LOPNR) %>%
+  group_by(LOPNR) %>%
+  slice(1)
+
+scz <- left_join(scz, migrate)
+```
