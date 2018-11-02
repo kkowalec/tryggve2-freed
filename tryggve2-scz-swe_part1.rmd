@@ -109,7 +109,6 @@ education.f <- "/Volumes/projects/S3/S3_Research/tryggve2/tryggve_psych_v_educat
 grades.f <- "/Volumes/projects/S3/S3_Research/tryggve2/tryggve_psych_v_grades.tsv"
 
 ```
-
 Read in register data & Recode variables <- REQUIRE EDITING on the original variable names!
 
 1.1 Hospital discharge data (hdr)
@@ -310,10 +309,7 @@ civil <- fread("~/civil.tsv",sep="\t") %>%
                                    civil.status == "─" ~ "Widow/Widower",
                                    TRUE ~ NA))
 
-######################################
-######### ONLY AVAILABLE IN SWEDEN ###
-######################################
-
+# ONLY AVAILABLE IN SWEDEN
 # drug register not need by other countries 
 drug <- fread("~/drug.tsv", sep="\t") %>%
   as_tibble() %>%
@@ -331,57 +327,63 @@ drug <- fread("~/drug.tsv", sep="\t") %>%
          "strength_num"="STYRKNUMERIC")
 
 ```
-### Step 2: Create data frame with SCZ cases, date of first and second SCZ admission and age at these dates
 
-```{r message=FALSE}
+### Step 2: Select SCZ cohort
 
+2.1 Apply ICD codes to select SCZ cases 
+```{r extract SCZ cases}
 scz <- hdr %>%
-  filter((ICD != 10 & substr(DIA,1,3) == "295") | # use grep and refine codes over time
-          (ICD == 10 & substr(DIA,1,3) == "F20") |
-           (ICD == 10 & substr(DIA,1,3) == "F25")) %>%
-  mutate(scz = 1,
-         scz_date = ymd(as.character(DATUM))) %>% # date of admission with SCZ as discharge dx
-  add_count(LOPNR) %>% 
+  filter((icd.version != 10 & substr(diagnosis,1,3) == "295") |
+          (icd.version == 10 & substr(diagnosis,1,3) == "F20") |
+           (icd.version == 10 & substr(diagnosis,1,3) == "F25")) %>%
+  mutate(scz = 1, # add disease status
+         scz_date = ymd(admit.date)) %>% # turn the date (character now) into R date object
+  add_count(id) %>%  # record the number of diagnoses per individual into variable "n"
   mutate(nsczcontacts = n, n=NULL) # n=null removes the original n variable
-
-scz <- scz %>%
-  arrange(LOPNR, scz_date) %>%
-  group_by(LOPNR) %>%
-  mutate(first_scz_date = first(scz_date),
-         second_scz_date = nth(scz_date, 2),
-         age.first.scz = as.numeric((first_scz_date - dob)/365.25),
-         mutate(age.second.scz = as.numeric((second_scz_date - dob)/365.25))) %>%
-  ungroup()
-
 ```
 
+2.2 Record dates of first and second SCZ admission
+```{r record first/second dx dates}
+scz <- scz %>%
+  arrange(id, scz_date) %>% # sort by ID, and dx date
+  group_by(id) %>%  # group by ID
+  mutate(first_scz_date = first(scz_date),  # record the date of first dx
+         second_scz_date = nth(scz_date, 2)) %>%  # record the date of second dx
+#         age.first.scz = as.numeric((first_scz_date - dob)/365.25),
+#          age.second.scz = as.numeric((second_scz_date - dob)/365.25)
+  ungroup()  # ungroup by ID
 
 # if no second_scz_date, exclude them
+```
 
-## scz hospitalisations
-## need to add MVO code == 9 (for psychiatric in/outpatient)
-
+2.3 Divide inpatient/outpatient dx
+```{r inpatient vs outpatient}
+# scz hospitalisations
 sczinpt <- scz %>%
-  filter(SOURCE == 1) %>%
-  add_count(LOPNR) %>%
+  filter(inpatient == 1) %>%
+  add_count(id) %>%
   rename(nsczinpt = n) %>% 
-  arrange(LOPNR) %>%
-  group_by(LOPNR) %>%
+  arrange(id) %>%
+  group_by(id) %>%
   slice(1) %>%
-  select(-X_PID, -X_DID, -DIA, -SOURCE, -DATUM, -ICD, -scz_date, -first_scz_date)
+  select(id, nsczinpt)
 
+# scz outpatient visits
 sczoutpt <- scz %>%
-  filter(SOURCE == 2) %>%
-  add_count(LOPNR) %>%
+  filter(inpatient == 0) %>%
+  add_count(id) %>%
   rename(nsczoutpt = n) %>% 
-  arrange(LOPNR) %>%
-  group_by(LOPNR) %>%
+  arrange(id) %>%
+  group_by(id) %>%
   slice(1) %>%
-  select(-X_PID, -X_DID, -DIA, -SOURCE, -DATUM, -ICD, -scz_date, -first_scz_date)
+  select(id, nsczoutpt)
 
+## need to add MVO code == 9 (for psychiatric in/outpatient) <- SKIP FOR NOW
+
+# add back together
 scz <- left_join(scz, sczinpt)
 
-scz <- left_join(scz, sczoutpt, by = "LOPNR")
+scz <- left_join(scz, sczoutpt, by = "id")
 
 scz <- scz %>%
   mutate(nsczcontacts.x = ifelse(is.na(nsczcontacts.x), nsczcontacts.y, nsczcontacts.x)) %>%
@@ -390,9 +392,12 @@ scz <- scz %>%
   mutate(nsczoutpt = ifelse(is.na(nsczoutpt), 0, nsczoutpt)) %>%
   mutate(nsczinpt = ifelse(is.na(nsczinpt), 0, nsczinpt))
 
-
 ```
 
+
+
+
+```
 
 
 ### Step 3: Demographics: sex, death, emigration
