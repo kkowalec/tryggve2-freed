@@ -134,8 +134,8 @@ hdr <- fread(hdr.f, sep="\t") %>%
   + unique ID - rename as "id"  
   + Sex (1 = male, 2 = female) - rename as "sex"  
   + Birth country - rename as "birth.country"
-    + Sweden
-    + Nordic not Sweden
+    + Sweden (0=SWE)
+    + Nordic not Sweden 
     + EU28 not Nordic
     + Europe not EU28 not Nordic
     + Africa
@@ -154,12 +154,10 @@ pop <- fread(pop.f, sep="\t") %>%
          "birth.country"="FODELSEGRUPP",
          "birth.county"="FODELSELAN",
          "birth.date"="FODELSEDATUM") %>%
-  select(-birth.county) # remove birth county
+  select(-birth.county) %>% # remove birth county
+  mutate(swe.born = case_when(birth.country == 0 ~ 1,
+                              birth.country != 0 ~ 0)) # add an indicator of Sweden born (1=SWE, 0=non-SWE, NAs=unknown)
   mutate(birth.date = paste(as.character(birth.date),"15",sep=""))  # add 15th as day of the month
-# Q for KK: skip the following?? 
-#  mutate(swe.birth.county = ifelse(swe.birth.county == 2, 1, swe.birth.county), # account for recategorisation as per Amir
-#    swe.birth.county = ifelse(swe.birth.county == 11, 12, swe.birth.county),
-#    swe.birth.county = ifelse(swe.birth.county %in% c(15, 16), 14, swe.birth.county))
 
 # Q for KK: skip the following?? -NO
 pop$birth.country <- as.factor(pop$birth.country)
@@ -371,77 +369,47 @@ scz <- scz %>%
 ### Step 3: Demographics: sex, death, emigration
 
 3.1 Merge SCZ cohort with population register 
-Add sex and birthdate to the SCZ
-```{r}
-scz.pop <- left_join(scz, pop, by="id") %>% 
+Add sex and birthdate to the SCZ cohort, also derive age at first & second diagnoses
+```{r add sex and birth info}
+scz <- left_join(scz, pop, by="id") %>% 
   mutate(birth.date = ymd(birth.date)) %>% # birth date as date object 
   mutate(age.first.scz = as.integer((first_scz_date - birth.date)/365.25), # age at the first & second dx (as integer)
          age.second.scz = as.integer((second_scz_date - birth.date)/365.25)) 
 
+# Q for KK: do we need birth year etc? Skipped the DOB part now.
+```
 
+3.2 Merge SCZ cohort with Cause of Death register 
+Add death date to the SCZ cohort, also derive age at death (if deceased)
+```{r add death info}
+scz.death <- left_join(scz, death, by="id") %>% 
+  mutate(death.date = ymd(dod),dod=NULL) %>% # death date as date object
+  mutate(age.death = as.integer((death.date - birth.date)/365.25)) # age at death, NAs if not deceased
 
-###############################
-# DOB #########################
-###############################
+```
 
-# add 15 to date (14 to those in Feb, birth.yr = yyyymm)
-scz$birth.yr <- as.character(scz$birth.yr)
-
-scz <- scz %>%
-  mutate(feb.birth = str_extract(birth.yr, "[:digit:]{4}02"))
-
-scz$feb.birth <- sapply(scz$feb.birth, paste0, "14")
-
-scz <- scz %>%
-  mutate(feb.birth = gsub("NA14", NA, feb.birth))
-
-scz$birth.yr <- sapply(scz$birth.yr, paste0, "15")
-
-scz <- scz %>%
-  mutate(birth.yr = ifelse(!is.na(feb.birth), feb.birth, birth.yr))
- 
-###############################
-# Death #######################
-###############################
-
-death <- death %>%
-  mutate(deathdate = ymd(as.character(X_DODSDAT))) %>%
-  select(-X_DODSDAT)
-
-scz <- left_join(scz, death) # join in data with main population
-
-###############################
-# Date of Emigration ##########
-###############################
+3.3 Merge SCZ cohort with Emigration register
+```{r}
 
 # select only those born in respective countries?
 
 migrate <- migrate %>%
   filter(MTYP == "E")
   
-migrate$MDATUM <- as.character(migrate$MDATUM)
-
 migrate <- migrate %>%
   mutate(feb.birth = str_extract(MDATUM, "[:digit:]{4}02"))
 
 migrate$feb.birth <- sapply(migrate$feb.birth, paste0, "14")
 
 migrate <- migrate %>%
-  mutate(feb.birth = gsub("NA14", NA, feb.birth))
-
-migrate$MDATUM <- sapply(migrate$MDATUM, paste0, "15")
-
-migrate <- migrate %>%
-  mutate(MDATUM = ifelse(!is.na(feb.birth), feb.birth, MDATUM))
-
-migrate <- migrate %>%
   mutate(emig.date = ymd(as.character(MDATUM))) %>%
   select(-MDATUM, -feb.birth)
 
-migrate <- migrate %>%
-  arrange(LOPNR, emig.date) %>%
-  group_by(LOPNR) %>%
-  mutate(emig.date = first(emig.date)) %>%
+emigrate <- migrate %>%
+  filter(migrate.type=="E") %>%
+  arrange(id, migrate.date) %>%
+  group_by(id) %>%
+  mutate(emig.date = first(migrate.date)) %>%
   ungroup()
 
 migrate <- migrate %>%
@@ -450,4 +418,7 @@ migrate <- migrate %>%
   slice(1)
 
 scz <- left_join(scz, migrate)
+
+
 ```
+
