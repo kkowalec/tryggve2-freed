@@ -144,7 +144,7 @@ hdr <- fread(hdr.f, sep="\t") %>%
     + Asia
     + Oceania
     + Soviet union
-  + Birth county - rename as "birth.county" <- may skip
+  + Birth county - rename as "birth.county" <-  skip
   + Birth year and month (yyyymm) - add 15th as day of the month & rename as "birth.date"
 ```{r read in population register}
 pop <- fread(pop.f, sep="\t") %>%
@@ -154,13 +154,14 @@ pop <- fread(pop.f, sep="\t") %>%
          "birth.country"="FODELSEGRUPP",
          "birth.county"="FODELSELAN",
          "birth.date"="FODELSEDATUM") %>%
+  select(-birth.county) # remove birth county
   mutate(birth.date = paste(as.character(birth.date),"15",sep=""))  # add 15th as day of the month
 # Q for KK: skip the following?? 
 #  mutate(swe.birth.county = ifelse(swe.birth.county == 2, 1, swe.birth.county), # account for recategorisation as per Amir
 #    swe.birth.county = ifelse(swe.birth.county == 11, 12, swe.birth.county),
 #    swe.birth.county = ifelse(swe.birth.county %in% c(15, 16), 14, swe.birth.county))
 
-# Q for KK: skip the following?? 
+# Q for KK: skip the following?? -NO
 pop$birth.country <- as.factor(pop$birth.country)
 levels(pop$birth.country) <-
   c(
@@ -176,30 +177,6 @@ levels(pop$birth.country) <-
     "Soviet union"
   )
 
-# urban vs rural birth?
-levels(pop$birth.county) <-
-  c("Stockholm County",
-    "Uppsala",
-    "Sodermanland",
-    "Vastergotland",
-    "Jonkoping",
-    "Kronoberg",
-    "Kalmar",
-    "Gotland",
-    "Blekinge",
-    "Skane",
-    "Halland",
-    "Vastra Gotaland",
-    "Varmland",
-    "Orebro",
-    "Vastmanland",
-    "Dalarna",
-    "Gavleborg",
-    "Vasternorrland",
-    "Jamtland",
-    "Vasterbotten",
-    "Norrbotten"
-  )
 ```
 
 1.3 Death register (death)
@@ -382,27 +359,27 @@ sczoutpt <- scz %>%
 
 # add back together
 scz <- left_join(scz, sczinpt)
-
 scz <- left_join(scz, sczoutpt, by = "id")
 
+# change the NAs in inp/outp counts into 0
 scz <- scz %>%
-  mutate(nsczcontacts.x = ifelse(is.na(nsczcontacts.x), nsczcontacts.y, nsczcontacts.x)) %>%
-  select(-nsczcontacts.y) %>%
-  rename(nsczcontacts = nsczcontacts.x) %>%
   mutate(nsczoutpt = ifelse(is.na(nsczoutpt), 0, nsczoutpt)) %>%
   mutate(nsczinpt = ifelse(is.na(nsczinpt), 0, nsczinpt))
 
 ```
 
-
-
-
-```
-
-
 ### Step 3: Demographics: sex, death, emigration
 
+3.1 Merge SCZ cohort with population register 
+Add sex and birthdate to the SCZ
 ```{r}
+scz.pop <- left_join(scz, pop, by="id") %>% 
+  mutate(birth.date = ymd(birth.date)) %>% # birth date as date object 
+  mutate(age.first.scz = as.integer((first_scz_date - birth.date)/365.25), # age at the first & second dx (as integer)
+         age.second.scz = as.integer((second_scz_date - birth.date)/365.25)) 
+
+
+
 ###############################
 # DOB #########################
 ###############################
