@@ -339,6 +339,14 @@ sczoutpt <- scz %>%
   slice(1) %>%  # select the first row
   select(id, nsczoutpt )# need only the variables of ID and the number of scz outpatient records
 
+# Q for KK: collapsing to per-indv record will make it difficult to apply filters (e.g. refine ICD codes) later. Skip for now?
+#scz <- scz %>%
+#  arrange(id,scz_date) %>% # collapse to per-individual record and not per-admission
+#  group_by(id) %>%
+#  slice(1) %>%
+#  select(id, scz, first_scz_date, second_scz_date, nsczcontacts) %>%
+#  ungroup()
+
 # add back together
 scz <- left_join(scz, sczinpt)
 scz <- left_join(scz, sczoutpt, by = "id")
