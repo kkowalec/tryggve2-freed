@@ -118,14 +118,17 @@ Read in register data & Recode variables <- REQUIRE EDITING on the original vari
     + SOURCE: inpatient (=1) / outpatient (=2) - recode & rename as "inpatient" (inpatient=1; outpatient=0)
     + ICD version - rename as "icd.version"
     + ICD code - rename as "diagnosis"
+    + primary vs secondary diagnosis - rename as "dx.code.num"
+n.b. might also add "MVO" code (=9) indicating dx from psychiatric care
 ```{r Read in hospital discharge register}
 hdr <- fread(hdr.f, sep="\t") %>%
   as_tibble() %>%
   rename("id"="LOPNR",
          "admit.date"="DATUM", # date of admission
          "inpatient"="SOURCE", # inpatient (1) or outpatient (2)
-         "icd.version"="ICD",
-         "diagnosis"="DIA") %>% # ICD diagnostic code
+         "icd.version"="ICD", # ICD version - 8, 9 or 10
+         "diagnosis"="DIA", # ICD diagnostic code
+         "dx.code.num"="X_DID") %>% # primary vs. other ICD dx codes, i.e. H01 = primary, all others = secondary 
   mutate(inpatient = ifelse(inpatient == 2, 0, 1)) #recode such that inpatient == 1 and outpatient == 0
 ```
 
@@ -135,7 +138,7 @@ hdr <- fread(hdr.f, sep="\t") %>%
   + Sex (1 = male, 2 = female) - rename as "sex"  
   + Birth country - rename as "birth.country"
     + Sweden (0=SWE)
-    + Nordic not Sweden 
+    + Nordic not Sweden (numbers 1-9 for the followings)
     + EU28 not Nordic
     + Europe not EU28 not Nordic
     + Africa
@@ -144,36 +147,20 @@ hdr <- fread(hdr.f, sep="\t") %>%
     + Asia
     + Oceania
     + Soviet union
-  + Birth county - rename as "birth.county" <-  skip
-  + Birth year and month (yyyymm) - add 15th as day of the month & rename as "birth.date"
+  + Birth county - rename as "birth.county" <-  drop this variable 
+  + Birth year and month (yyyymm) - add 15th as day of the month & rename as "dob"
 ```{r read in population register}
 pop <- fread(pop.f, sep="\t") %>%
   as_tibble() %>%
   rename("id"="LOPNR",
          "sex"="KON", # 1 = male, 2 = female
-         "birth.country"="FODELSEGRUPP",
-         "birth.county"="FODELSELAN",
-         "birth.date"="FODELSEDATUM") %>%
-  select(-birth.county) %>% # remove birth county
+         "birth.country"="FODELSEGRUPP", # country of birth
+         "birth.county"="FODELSELAN", # county of birth in each country
+         "dob"="FODELSEDATUM") %>%
+  select(-birth.county) %>% # drop birth county
   mutate(swe.born = case_when(birth.country == 0 ~ 1,
                               birth.country != 0 ~ 0)) # add an indicator of Sweden born (1=SWE, 0=non-SWE, NAs=unknown)
-  mutate(birth.date = paste(as.character(birth.date),"15",sep=""))  # add 15th as day of the month
-
-# Q for KK: skip the following?? -NO
-pop$birth.country <- as.factor(pop$birth.country)
-levels(pop$birth.country) <-
-  c(
-    "Sweden",
-    "Nordic not Sweden",
-    "EU28 not Nordic",
-    "Europe not EU28 not Nordic",
-    "Africa",
-    "North America",
-    "South America",
-    "Asia",
-    "Oceania",
-    "Soviet union"
-  )
+  mutate(dob = paste(as.character(dob),"15",sep=""))  # add 15th as day of the month
 
 ```
 
@@ -306,6 +293,7 @@ drug <- fread("~/drug.tsv", sep="\t") %>%
 ### Step 2: Select SCZ cohort
 
 2.1 Apply ICD codes to select SCZ cases 
+Note: we start with broad code, will refine the code later
 ```{r extract SCZ cases}
 scz <- hdr %>%
   filter((icd.version != 10 & substr(diagnosis,1,3) == "295") |
@@ -324,8 +312,6 @@ scz <- scz %>%
   group_by(id) %>%  # group by ID
   mutate(first_scz_date = first(scz_date),  # record the date of first dx
          second_scz_date = nth(scz_date, 2)) %>%  # record the date of second dx
-#         age.first.scz = as.numeric((first_scz_date - dob)/365.25),
-#          age.second.scz = as.numeric((second_scz_date - dob)/365.25)
   ungroup()  # ungroup by ID
 
 # if no second_scz_date, exclude them
@@ -335,25 +321,23 @@ scz <- scz %>%
 ```{r inpatient vs outpatient}
 # scz hospitalisations
 sczinpt <- scz %>%
-  filter(inpatient == 1) %>%
-  add_count(id) %>%
-  rename(nsczinpt = n) %>% 
-  arrange(id) %>%
-  group_by(id) %>%
-  slice(1) %>%
-  select(id, nsczinpt)
+  filter(inpatient == 1) %>% # filter for inpatient record
+  add_count(id) %>% # add number of inpatient records per person
+  rename(nsczinpt = n) %>% # rename to indicate the number of scz inpatient records
+  arrange(id) %>% # order by id
+  group_by(id) %>% # for each id
+  slice(1) %>% # select the first row
+  select(id, nsczinpt) # need only the variables of ID and the number of scz inpatient records
 
 # scz outpatient visits
 sczoutpt <- scz %>%
-  filter(inpatient == 0) %>%
-  add_count(id) %>%
-  rename(nsczoutpt = n) %>% 
-  arrange(id) %>%
-  group_by(id) %>%
-  slice(1) %>%
-  select(id, nsczoutpt)
-
-## need to add MVO code == 9 (for psychiatric in/outpatient) <- SKIP FOR NOW
+  filter(inpatient == 0) %>% # filter for outpatient record
+  add_count(id) %>% # add number of outpatient records per person
+  rename(nsczoutpt = n) %>% # rename to indicate the number of scz outpatient records
+  arrange(id) %>% # order by id
+  group_by(id) %>% # for each id
+  slice(1) %>%  # select the first row
+  select(id, nsczoutpt )# need only the variables of ID and the number of scz outpatient records
 
 # add back together
 scz <- left_join(scz, sczinpt)
@@ -372,9 +356,9 @@ scz <- scz %>%
 Add sex and birthdate to the SCZ cohort, also derive age at first & second diagnoses
 ```{r add sex and birth info}
 scz <- left_join(scz, pop, by="id") %>% 
-  mutate(birth.date = ymd(birth.date)) %>% # birth date as date object 
-  mutate(age.first.scz = as.integer((first_scz_date - birth.date)/365.25), # age at the first & second dx (as integer)
-         age.second.scz = as.integer((second_scz_date - birth.date)/365.25)) 
+  mutate(dob = ymd(dob)) %>% # birth date as date object 
+  mutate(age.first.scz = as.integer((first_scz_date - dob)/365.25), # age at the first & second dx (as integer)
+         age.second.scz = as.integer((second_scz_date - dob)/365.25)) 
 
 # Q for KK: do we need birth year etc? Skipped the DOB part now.
 ```
@@ -384,43 +368,29 @@ Add death date to the SCZ cohort, also derive age at death (if deceased)
 ```{r add death info}
 scz <- left_join(scz, death, by="id") %>% 
   mutate(death.date = ymd(dod),dod=NULL) %>% # death date as date object
-  mutate(age.death = as.integer((death.date - birth.date)/365.25)) # age at death, NAs if not deceased
+  mutate(age.death = as.integer((death.date - dob)/365.25)) # age at death, NAs if not deceased
 
 ```
 
 3.3 Merge SCZ cohort with Emigration register
-```{r}
+First restrict the cohort to those born in the respective country
+Then add the date of first emigration (since then lost FU)
+```{r add emigration info}
 
-# select only those born in respective countries
+# select only those born in respective country
 scz <- scz %>% 
   filter(swe.born == 1) # apply filter on the indicator variable
 
-migrate <- migrate %>%
-  filter(MTYP == "E")
-  
-migrate <- migrate %>%
-  mutate(feb.birth = str_extract(MDATUM, "[:digit:]{4}02"))
-
-migrate$feb.birth <- sapply(migrate$feb.birth, paste0, "14")
-
-migrate <- migrate %>%
-  mutate(emig.date = ymd(as.character(MDATUM))) %>%
-  select(-MDATUM, -feb.birth)
-
 emigrate <- migrate %>%
-  filter(migrate.type=="E") %>%
-  arrange(id, migrate.date) %>%
-  group_by(id) %>%
-  mutate(emig.date = first(migrate.date)) %>%
-  ungroup()
+  filter(migrate.type=="E") %>% # select only emigration
+  arrange(id, migrate.date) %>% # sort by ID and migration date
+  group_by(id) %>% # for each unique ID
+  mutate(first.emig.date = ymd(first(migrate.date))) %>% # record the first emigration date
+  slice(1) %>% # and select just one record
+  ungroup() %>% 
+  select(id, first.emig.date)
 
-migrate <- migrate %>%
-  arrange(LOPNR) %>%
-  group_by(LOPNR) %>%
-  slice(1)
-
-scz <- left_join(scz, migrate)
-
+scz <- left_join(scz, emigrate,by="id")
 
 ```
 
