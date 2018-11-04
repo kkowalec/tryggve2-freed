@@ -382,7 +382,7 @@ scz <- left_join(scz, pop, by="id") %>%
 3.2 Merge SCZ cohort with Cause of Death register 
 Add death date to the SCZ cohort, also derive age at death (if deceased)
 ```{r add death info}
-scz.death <- left_join(scz, death, by="id") %>% 
+scz <- left_join(scz, death, by="id") %>% 
   mutate(death.date = ymd(dod),dod=NULL) %>% # death date as date object
   mutate(age.death = as.integer((death.date - birth.date)/365.25)) # age at death, NAs if not deceased
 
@@ -391,7 +391,9 @@ scz.death <- left_join(scz, death, by="id") %>%
 3.3 Merge SCZ cohort with Emigration register
 ```{r}
 
-# select only those born in respective countries?
+# select only those born in respective countries
+scz <- scz %>% 
+  filter(swe.born == 1) # apply filter on the indicator variable
 
 migrate <- migrate %>%
   filter(MTYP == "E")
