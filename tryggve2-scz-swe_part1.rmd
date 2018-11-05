@@ -379,7 +379,7 @@ rm(pop) # remove pop register
 Add death date to the SCZ cohort, also derive age at death (if deceased)
 ```{r add death info}
 scz <- left_join(scz, death, by="id") %>% 
-  mutate(dod = ymd(dod),dod=NULL) %>% # death date as date object
+  mutate(dod = ymd(dod)) %>% # death date as date object
   mutate(age.death = as.integer((dod - dob)/365.25)) # age at death, NAs if not deceased
 
 rm(death) # remove death reg
@@ -389,6 +389,8 @@ rm(death) # remove death reg
 First restrict the cohort to those born in the respective country
 Then add the date of first emigration (since then lost FU)
 ```{r add emigration info}
+# check how many filtered due to foreign born
+nrow(scz) - nrow(scz %>% filter(swe.born == 1))
 
 # select only those born in respective country
 scz <- scz %>% 
@@ -405,6 +407,11 @@ emigrate <- migrate %>%
 
 scz <- left_join(scz, emigrate,by="id")
 
-rm(migrate) # remove migration register
+rm(migrate, emigrate) # remove migration register
+```
+
+### SAVE ALL THE DATA 
+```{r save data}
+save.image(file = "../DATA/scz.part1.RData",compress = TRUE)
 ```
 
