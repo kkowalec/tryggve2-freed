@@ -159,7 +159,7 @@ pop <- fread(pop.f, sep="\t") %>%
          "dob"="FODELSEDATUM") %>%
   select(-birth.county) %>% # drop birth county
   mutate(swe.born = case_when(birth.country == 0 ~ 1,
-                              birth.country != 0 ~ 0)) # add an indicator of Sweden born (1=SWE, 0=non-SWE, NAs=unknown)
+                              birth.country != 0 ~ 0)) %>% # add an indicator of Sweden born (1=SWE, 0=non-SWE, NAs=unknown)
   mutate(dob = paste(as.character(dob),"15",sep=""))  # add 15th as day of the month
 
 ```
