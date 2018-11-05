@@ -2288,90 +2288,6 @@ paternal.age <-
 
 
 
-### Step : Cohort selection and observation period
-```{r}
-
-study <- x %>% 
-  filter(birth.country == "Sweden" &
-           !is.na(b.countyID) &
-           substr(as.character(first_scz_date),1,4) %in% c(1973:2014) & age.second.scz >= 18) %>%
-  summarise(n=n())
-
-
-# add flag for died or emigrated during observation time
-
-trsx <- trsx %>%
-  mutate(deathdate = ymd(deathdate),
-         emig.date = ymd(emig.date),
-         drug.death = as.numeric((deathdate - drugdate)/365.25),
-         drug.emig = as.numeric((emig.date - drugdate)/365.25),
-         fu.indicator = ifelse(!is.na(drug.emig), 1,
-                               ifelse(!is.na(drug.death), 2, 0)))
-
-trsx$fu.indicator <- as.factor(trsx$fu.indicator)
-levels(trsx$fu.indicator) <- c("end of drug reg", "emigrated", "died")
-
-
-# how many and filter out those who emigrated or died before drug start
-
-x <- scz %>% 
-  filter(birth.country == "Sweden" &
-           !is.na(b.countyID) &
-           as.numeric(substr(as.character(birth.yr),1,4) %in% c(1942:1990)))
-
-x %>%
-  filter(drug.death <= 0) %>%
-  summarise(n=n())
-x %>%
-  filter(drug.emig <= 0) %>%
-  summarise(n=n())
-
-x <- x %>%
-  filter(drug.emig > 0 | is.na(drug.emig)) %>%
-  filter(drug.death > 0 | is.na(drug.death))
-
-x$deathdate <- as.character(x$deathdate)
-x$emig.date <- as.character(x$emig.date)
-
-x <- scz %>%
-  mutate(fu.date = ifelse((is.na(emig.date) & !is.na(deathdate)), deathdate,
-                          ifelse(!is.na(emig.date) & is.na(deathdate), emig.date,
-                          ifelse(!is.na(emig.date) & !is.na(deathdate), emig.date, "2014-12-31"))))
-
-# some have fu.dates past 2014-12-31
-# reason is that some registers (death and migration) have linkage past that point
-# edit these to state "2014-12-31"
-
-x <- x %>%
-  mutate(fu.date = ifelse(str_detect(fu.date, "2015"), "2014-12-31", fu.date))
-
-x %>% filter(fu.date > "2014-12-31") %>% summarise(n=n())
-
-# check good
-
-x <- x %>%
-  mutate(fu.date = ymd(fu.date),
-         deathdate = ymd(deathdate),
-         emig.date = ymd(emig.date))
-
-x <- x %>%
-  mutate(obs.time = as.numeric((fu.date - drugdate)/365.25))
-
-# add flag for died or emigrated during observation time
-
-x <- x %>%
-  mutate(fu.indicator = ifelse(!is.na(drug.emig), 1,
-                               ifelse(!is.na(drug.death), 2, 0)))
-
-
-x$fu.indicator <- as.factor(x$fu.indicator)
-levels(x$fu.indicator) <- c("end of drug reg", "emigrated", "died")
-
-x %>% group_by(fu.indicator) %>% summarise(n=n())
-x %>% summarise(n=n(), median_obstime = median(obs.time), mean_obstime = mean(obs.time))
-
-```
-
 ### Step 11: Outcomes
 
 need dates for all of these:
@@ -2386,6 +2302,37 @@ need dates for all of these:
 
 ```
 
+
+### Step : Cohort selection and observation period
+```{r}
+# need start date of observation period -- ?
+# add flag for died or emigrated during observation time and time of follow up
+
+scz <- scz %>%
+  mutate(fu.indicator = case_when(!is.na(dod) ~ "died",
+                                  !is.na(first.emigrate.date) ~ "emigrated"),
+         obs.time = )
+
+
+# basic descriptives
+scz %>%
+  summarise(n=n(), 
+            median_obstime = median(obs.time), 
+            mean_obstime = mean(obs.time))
+scz %>%
+  group_by(fu.indicator) %>% # by follow up group
+  summarise(n=n(),
+            median_obstime = median(obs.time), 
+            mean_obstime = mean(obs.time))
+
+
+
+# study cohort selection
+study <- scz %>% 
+  filter(birth.country == "Sweden" &
+           substr(as.character(first_scz_date),1,4) %in% c(1973:2014) & age.second.scz >= 18)
+
+```
 
 
 
