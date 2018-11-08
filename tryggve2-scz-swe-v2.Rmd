@@ -622,7 +622,8 @@ suds <- suds %>%
 sui <- hdr %>%
    filter((icd.version==8 & grepl("^E950|^E951|^E952$|^E9520|^E9521|^E9529|^E953|^E954|^E955|^E956|^E957|^E958|^E959", diagnosis))
       | (icd.version==9 & grepl("^E95A|^E95B|^E95C|^E95D|^E95E|^E95F|^E95G|^E95H|^E95W|^E95X", diagnosis))
-      | (icd.version==10)) %>%
+      | (icd.version==10 & grepl("^X60|^X61|^X62|^X63|^X64|^X65|^X66|^X67|^X68|^X69|^X70|^X71|^X72|^X73|^X74|^X75|^X76|^X77|^X78|^X79|^X80|^X81|
+                               X82|^X83|^X84", diagnosis)) ) %>%
   mutate(sui = 1,
          admit.date = ymd(as.character(admit.date))) %>%
   arrange(id, admit.date) %>%
@@ -1773,7 +1774,8 @@ rm(suds,suds.family,suds.kid,father.suds,suds.fhx,kids.suds,mother.suds,suds.sib
 sui <- hdr %>%
    filter((icd.version==8 & grepl("^E950|^E951|^E952$|^E9520|^E9521|^E9529|^E953|^E954|^E955|^E956|^E957|^E958|^E959", diagnosis))
       | (icd.version==9 & grepl("^E95A|^E95B|^E95C|^E95D|^E95E|^E95F|^E95G|^E95H|^E95W|^E95X", diagnosis))
-      | (icd.version==10)) %>%
+      | (icd.version==10 & grepl("^X60|^X61|^X62|^X63|^X64|^X65|^X66|^X67|^X68|^X69|^X70|^X71|^X72|^X73|^X74|^X75|^X76|^X77|^X78|^X79|^X80|^X81|
+                               X82|^X83|^X84", diagnosis)) ) %>%
   mutate(sui = 1,
          admit.date = ymd(as.character(admit.date))) %>%
   arrange(id, admit.date) %>%
