@@ -1,0 +1,403 @@
+---
+title: "Tryggve2 - Major depressive disorder - Sweden (part 2)"
+author: "Lu Yi, lu.yi@ki.se"
+date: "November 2018"
+output: 
+  html_document: 
+    fig_caption: yes
+    theme: simplex
+    highlight: zenburn
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+### Motivation and Overview
+
+NOTE: NOT RUN
+
+Examine variables associated with poor outcomes in schizophrenia, using first, the Swedish National Registers. In this report, I will present some initial coding for the analyses.
+
+**Overview**
+
+1. Import data
+2. Create a dataframe with all necessary variables including exposures and outcomes
+3. Analyses
+
+**Exposures or Predictors**
+1) Family of origin:
++ parental ages at birth ##LY
++ parental SES-education-occupation-income
++ birth order
++ family composition (number of parents/partners, parental criminality-incarceration, divorce, siblings, out-of-home placement)
+
+2) Childhood trauma: ##LY
++ parental death
++ severe medical illness of parents/sibs
+
+3) Education: done-kk
++ educational attainment
++ standardized testing in grade 9
+
+4) Prior personal medical history:
++ comorbid disorders and medication use ##kk
++ prior personal medical history (somatic disorders) #kk
++ childhood hospitalization
+
+5) Family history of psychiatric disorder ##kk
++ MD, BIP, psychosis, suicide in first-degree relatives
+
+6) Genetic risk factors  NOT NOW
++ GRS of MDD, SCZ, BIP, IQ etc.
+
+**Outcomes**
++ the number of psychiatric hospitalizations and outpatient contacts 
++ the number of somatic healthcare utilization
++ indication of 2nd or 3rd line treatments (pharmacological augmentation, ECT, TMS, DBS, clozapine) 
++ suicide or suicide attempt
+
+**TO DOs**
+
+cut down this doc into 4 separate RMD (eventually):
+outcome
+exposure/risk factors
+basics
+analysis
+
+***
+
+### Step 0: Load R packages
+```{r R packages}
+library(dplyr)
+library(data.table)
+library(ggplot2)
+library(lubridate)
+
+Sys.setenv(TZ="Europe/Stockholm")
+```
+
+### Step 1: Load data
+REQUIRE EDITING on the file path
+```{r specify file path}
+# edit the file path where you have stored the part 1 data
+data.f <- "/Users/luyi/CloudStation/WORK_2018/MyProjects_with_Pat/GAPS_MDD/DATA/FREED/DATA/part1.RData"
+
+# load the R data
+load(data.f) 
+
+mdd <- mdd %>% as_tibble()  # needed?
+```
+
+### Step 2: Exposure-Prior psychiatric history
+Need to start with making a list of any one with a psych disorder in Sweden because will need
+for family history of psychiatric disorders.
+
+We are only selecting those with a date (1) before first treatment contact and (2) before age 15 years (indicating childhood)
+
++ comorbid psych disorders/conditions: psych (adhd, asd, anx, bip, ed, mdd, ocd, ptsd, suds, suicides)
++ medication use (wait on this-not sure which drugs to focus on)
+```{r}
+# make list of scz cases and date of first contact for comparison with psych disorders below
+first.scz.date <- scz %>%
+  select(id, first_scz_date, dob)
+
+#######################  
+# ADHD ################
+#######################
+adhd <- hdr %>% 
+  filter(  (icd.version==9 & grepl("^314|^314A|^314B|^314C|^314J|^314W|^314X", diagnosis)) # no icd codes for ADHD prior to ICD version 9
+           | (icd.version==10 & grepl("^F90|^F900|^F901|^F908", diagnosis)) 
+  ) %>%
+  mutate(adhd = 1,
+         admit.date = ymd(as.character(admit.date))) %>%
+  arrange(id, admit.date) %>%
+  group_by(id) %>%
+  mutate(first.adhd.date = first(admit.date)) %>%
+  slice(1) %>%
+  select(id,adhd,first.adhd.date)
+
+adhd <- inner_join(first.scz.date,adhd) # inner join together with scz cases
+
+adhd <- adhd %>%
+  mutate(age.first.adhd = as.numeric((first.adhd.date - dob)/365.25),
+         adhd.childhood = ifelse(age.first.adhd <= 15, 1, 0), # only those with adhd dx before age 15 years
+         adhd.pre.scz = ifelse(first.adhd.date < first_scz_date, 1, 0)  #  only those with adhd dx before scz contact
+) %>%
+  select(id,adhd.childhood,adhd.pre.scz)
+
+#######################
+# ASD #################
+#######################
+asd <- hdr %>% 
+  filter(  (icd.version==9 & grepl("^299A", diagnosis)) # no icd codes for asd prior to version 9
+           | (icd.version==10 & grepl("^F840|^F841|^F845", diagnosis)) 
+  ) %>%
+  mutate(asd = 1,
+         admit.date = ymd(as.character(admit.date))) %>%
+  arrange(id, admit.date) %>%
+  group_by(id) %>%
+  mutate(first.asd.date = first(admit.date)) %>%
+  slice(1) %>%
+  select(id,asd,first.asd.date)
+
+asd <- inner_join(first.scz.date,asd) # inner join together with scz cases
+
+asd <- asd %>%
+  mutate(age.first.asd = as.numeric((first.asd.date - dob)/365.25),
+         asd.childhood = ifelse(age.first.asd <= 15, 1, 0), # only those with asd dx before age 15 years
+         asd.pre.scz = ifelse(first.asd.date < first_scz_date, 1, 0)  #  only those with asd dx before scz contact
+) %>%
+  select(id,asd.childhood,asd.pre.scz)
+
+#######################
+# Anxiety #############
+#######################
+anx <- hdr %>% 
+  filter(  (icd.version==8 & grepl("^300|^3000|^3002", diagnosis)) |
+             (icd.version==9 & grepl("^300|^300A|^300C", diagnosis)) |
+             (icd.version==10 & grepl("^F40|^F400|^F401|^F402|^F408|^F409|^F41|^F410|^F411|^F412|^F413|^F418|^F419", diagnosis)) 
+  ) %>%
+  mutate(anx = 1,
+         admit.date = ymd(as.character(admit.date))) %>%
+  arrange(id, admit.date) %>%
+  group_by(id) %>%
+  mutate(first.anx.date = first(admit.date)) %>%
+  slice(1) %>%
+  select(id,anx,first.anx.date)
+
+anx <- inner_join(first.scz.date,anx) # inner join together with scz cases
+
+anx <- anx %>%
+  mutate(age.first.anx = as.numeric((first.anx.date - dob)/365.25),
+         anx.childhood = ifelse(age.first.anx <= 15, 1, 0), # only those with anx dx before age 15 years
+         anx.pre.scz = ifelse(first.anx.date < first_scz_date, 1, 0)  #  only those with anx dx before scz contact
+  ) %>%
+  select(id,anx.childhood,anx.pre.scz)
+
+
+#######################
+# BIP #################
+#######################
+bp <- hdr %>%
+  filter( ((icd.version==8) & grepl('^2961|^2963|^2968',diagnosis)) |
+          ((icd.version==9) & grepl('^296|^269A|^269C|^2691|^296D|^2694|^296E|^2965|^296F|^2966|^296G|^2697|^269H|^2691|^26989|^269W|^26999|^269X',diagnosis)) | 
+            ((icd.version==10) & grepl('^F30$|^F301|^F302|^F308|^F309|^F31|^F310|^F311|^F312|^F313|^F314|^F315|^F316|^F317|^F318|^F319',diagnosis)) ) %>%
+  mutate(bip = 1,
+         admit.date = ymd(as.character(admit.date))) %>%
+  arrange(id, admit.date) %>%
+  group_by(id) %>%
+  mutate(first.bip.date = first(admit.date)) %>%
+  slice(1) %>%
+  select(id,bip,first.bip.date)
+
+bp <- inner_join(first.scz.date,bp) # inner join together with scz cases
+
+bp <- bp %>%
+  mutate(age.first.bip = as.numeric((first.bip.date - dob)/365.25),
+         bip.childhood = ifelse(age.first.bip <= 15, 1, 0), # only those with bip dx before age 15 years
+         bip.pre.scz = ifelse(first.bip.date < first_scz_date, 1, 0)  #  only those with bip dx before scz contact
+  ) %>%
+  select(id,bip.childhood,bip.pre.scz)
+
+
+
+#######################
+# Eating Disorders ####
+#######################
+ed <- hdr %>%
+  filter(  (icd.version==8 & grepl("^7840|^3065", diagnosis))
+           | (icd.version==9 & grepl("^307B|^307F", diagnosis))
+           | (icd.version==10 & grepl("^F50|^F500|^F501|^F502|^F503|^F509", diagnosis)) 
+  ) %>%
+  mutate(ed = 1,
+         admit.date = ymd(as.character(admit.date))) %>%
+  arrange(id, admit.date) %>%
+  group_by(id) %>%
+  mutate(first.ed.date = first(admit.date)) %>%
+  slice(1) %>%
+  select(id,ed,first.ed.date)
+
+ed <- inner_join(first.scz.date,ed) # inner join together with scz cases
+
+ed <- ed %>%
+  mutate(age.first.ed = as.numeric((first.ed.date - dob)/365.25),
+         ed.childhood = ifelse(age.first.ed <= 15, 1, 0), # only those with ed dx before age 15 years
+         ed.pre.scz = ifelse(first.ed.date < first_scz_date, 1, 0)  #  only those with ed dx before scz contact
+  ) %>%
+  select(id,ed.childhood,ed.pre.scz)
+
+
+#######################
+# MDD #################
+#######################
+
+mdd <- hdr %>% 
+  filter(  (icd.version==8 & grepl("^2960|^2968|^2969|^2980|^3004", diagnosis)) |
+            (icd.version==9 & grepl("^296C|^296D|^311", diagnosis)) |
+             (icd.version==10 & grepl("^F32|^F320|^F321|^F322|^F323|^F328|^F329|^F33|^F330|^F331|^F332|^F333|^F334|^F338|^F339", diagnosis)) 
+  ) %>%
+  mutate(mdd = 1,
+       admit.date = ymd(as.character(admit.date))) %>%
+  arrange(id, admit.date) %>%
+  group_by(id) %>%
+  mutate(first.mdd.date = first(admit.date)) %>%
+  slice(1) %>%
+  select(id,mdd,first.mdd.date)
+
+mdd <- inner_join(first.scz.date,mdd) # inner join together with scz cases
+
+mdd <- mdd %>%
+  mutate(age.first.mdd = as.numeric((first.mdd.date - dob)/365.25),
+         mdd.childhood = ifelse(age.first.mdd <= 15, 1, 0), # only those with mdd dx before age 15 years
+         mdd.pre.scz = ifelse(first.mdd.date < first_scz_date, 1, 0)  #  only those with mdd dx before scz contact
+  ) %>%
+  select(id,mdd.childhood,mdd.pre.scz)
+
+
+#######################
+# OCD #################
+#######################
+ocd <- hdr %>%
+   filter((icd.version==8 & grepl("^3003", diagnosis))
+      | (icd.version==9 & grepl("^300D", diagnosis))
+      | (icd.version==10 & grepl("^F42|^F420|^F421|^F422|^F428|^F429", diagnosis))) %>%
+  mutate(ocd = 1,
+         admit.date = ymd(as.character(admit.date))) %>%
+  arrange(id, admit.date) %>%
+  group_by(id) %>%
+  mutate(first.ocd.date = first(admit.date)) %>%
+  slice(1) %>%
+  select(id,ocd,first.ocd.date)
+
+ocd <- inner_join(first.scz.date,ocd) # inner join together with scz cases
+
+ocd <- ocd %>%
+  mutate(age.first.ocd = as.numeric((first.ocd.date - dob)/365.25),
+         ocd.childhood = ifelse(age.first.ocd <= 15, 1, 0), # only those with ocd dx before age 15 years
+         ocd.pre.scz = ifelse(first.ocd.date < first_scz_date, 1, 0)  #  only those with ocd dx before scz contact
+  ) %>%
+  select(id,ocd.childhood,ocd.pre.scz)
+
+
+#######################
+# PTSD ################
+#######################
+ptsd <- hdr %>% 
+  filter(  (icd.version==8 & grepl("^307", diagnosis)) |
+             (icd.version==9 & grepl("^308|^308A|^308B|^308C|^308D|^308E|^308X|^309|^309A|^309B|^309C|^309D|^309E|^309W|^309X", diagnosis)) |
+             (icd.version==10 & grepl("^F43|^F430|^F431|^F432|^F438|^F439", diagnosis)) 
+  ) %>%
+  mutate(ptsd = 1,
+         admit.date = ymd(as.character(admit.date))) %>%
+  arrange(id, admit.date) %>%
+  group_by(id) %>%
+  mutate(first.ptsd.date = first(admit.date)) %>%
+  slice(1) %>%
+  select(id,ptsd,first.ptsd.date)
+
+ptsd <- inner_join(first.scz.date,ptsd) # inner join together with scz cases
+
+ptsd <- ptsd %>%
+  mutate(age.first.ptsd = as.numeric((first.ptsd.date - dob)/365.25),
+         ptsd.childhood = ifelse(age.first.ptsd <= 15, 1, 0), # only those with ptsd dx before age 15 years
+         ptsd.pre.scz = ifelse(first.ptsd.date < first_scz_date, 1, 0)  #  only those with ptsd dx before scz contact
+  ) %>%
+  select(id,ptsd.childhood,ptsd.pre.scz)
+
+
+#######################
+# Substance abuse #####
+#######################
+suds <- hdr %>%
+  filter(  (icd.version==8 & grepl("^303|^3030|^3031|^3032|^3039|^304|^3040|^3041|^3042|^3043|^3044|^3045|^3046|^3047|^3048|^3049", diagnosis))
+           | (icd.version==9 & grepl("^303|^303A|^303X|^304|^304A|^304B|^304C|^304D|^304D|^304E|^304F|^304G|^304H|^304W|^304X|^305A|^305X", diagnosis))
+           | (icd.version==10 & grepl("^F10|^F100|^F101|^F102|^F103|^F104|^F105|^F106|^F107|^F108|^F109|^F11|^F110|^F111|^F112|^F113|^F114|^F115|^F116|^F117|^F118|^F119|
+                               F19|^F190|^F191|^F192|^F192|^F194|^F195|^F196|^F197|^F198|^F199", diagnosis)) 
+  ) %>%
+  mutate(suds = 1,
+         admit.date = ymd(as.character(admit.date))) %>%
+  arrange(id, admit.date) %>%
+  group_by(id) %>%
+  mutate(first.suds.date = first(admit.date)) %>%
+  slice(1) %>%
+  select(id,suds,first.suds.date)
+
+suds <- inner_join(first.scz.date,suds) # inner join together with scz cases
+
+suds <- suds %>%
+  mutate(age.first.suds = as.numeric((first.suds.date - dob)/365.25),
+         suds.childhood = ifelse(age.first.suds <= 15, 1, 0), # only those with suds dx before age 15 years
+         suds.pre.scz = ifelse(first.suds.date < first_scz_date, 1, 0)  #  only those with suds dx before scz contact
+  ) %>%
+  select(id,suds.childhood,suds.pre.scz)
+
+
+#######################
+# Suicides ############
+#######################
+sui <- hdr %>%
+   filter((icd.version==8 & grepl("^E950|^E951|^E952$|^E9520|^E9521|^E9529|^E953|^E954|^E955|^E956|^E957|^E958|^E959", diagnosis))
+      | (icd.version==9 & grepl("^E95A|^E95B|^E95C|^E95D|^E95E|^E95F|^E95G|^E95H|^E95W|^E95X", diagnosis))
+      | (icd.version==10)) %>%
+  mutate(sui = 1,
+         admit.date = ymd(as.character(admit.date))) %>%
+  arrange(id, admit.date) %>%
+  group_by(id) %>%
+  mutate(first.sui.date = first(admit.date)) %>%
+  slice(1) %>%
+  select(id,sui,first.sui.date)
+sui <- inner_join(first.scz.date,sui) # inner join together with scz cases
+
+sui <- sui %>%
+  mutate(age.first.sui = as.numeric((first.sui.date - dob)/365.25),
+         sui.childhood = ifelse(age.first.sui <= 15, 1, 0), # only those with sui dx before age 15 years
+         sui.pre.scz = ifelse(first.sui.date < first_scz_date, 1, 0)  #  only those with sui dx before scz contact
+  ) %>%
+  select(id,sui.childhood,sui.pre.scz)
+
+
+#########################################
+###### MERGE ALL psych DISORDERS ########
+#########################################
+
+psych.comorbid <- full_join(bp,anx)
+psych.comorbid <- full_join(psych.comorbid,ptsd)
+psych.comorbid <- full_join(psych.comorbid,adhd)
+psych.comorbid <- full_join(psych.comorbid,ed)
+psych.comorbid <- full_join(psych.comorbid,sui)
+psych.comorbid <- full_join(psych.comorbid,suds)
+psych.comorbid <- full_join(psych.comorbid,ocd)
+psych.comorbid <- full_join(psych.comorbid,asd)
+psych.comorbid <- full_join(psych.comorbid,mdd)
+
+rm(bp,anx,ptsd,adhd,ed,sui,suds,ocd,asd,mdd) # remove original dataframes
+ 
+scz <- left_join(scz,psych.comorbid)
+rm(psych.comorbid)
+
+scz <- scz %>%
+  mutate(bip.childhood=ifelse(is.na(bip.childhood),0,bip.childhood),
+         bip.pre.scz=ifelse(is.na(bip.pre.scz),0,bip.pre.scz),
+         anx.childhood=ifelse(is.na(anx.childhood),0,anx.childhood),
+         anx.pre.scz=ifelse(is.na(anx.pre.scz),0,anx.pre.scz),
+         ptsd.childhood=ifelse(is.na(ptsd.childhood),0,ptsd.childhood),
+         ptsd.pre.scz=ifelse(is.na(ptsd.pre.scz),0,ptsd.pre.scz),
+         adhd.childhood=ifelse(is.na(adhd.childhood),0,adhd.childhood),
+         adhd.pre.scz=ifelse(is.na(adhd.pre.scz),0,adhd.pre.scz),
+         ed.childhood=ifelse(is.na(ed.childhood),0,ed.childhood),
+         ed.pre.scz=ifelse(is.na(ed.pre.scz),0,ed.pre.scz),
+        sui.childhood=ifelse(is.na(sui.childhood),0,sui.childhood),
+         sui.pre.scz=ifelse(is.na(sui.pre.scz),0,sui.pre.scz),
+         suds.childhood=ifelse(is.na(suds.childhood),0,suds.childhood),
+         suds.pre.scz=ifelse(is.na(suds.pre.scz),0,suds.pre.scz),
+         ocd.childhood=ifelse(is.na(ocd.childhood),0,ocd.childhood),
+         ocd.pre.scz=ifelse(is.na(ocd.pre.scz),0,ocd.pre.scz),
+        asd.childhood=ifelse(is.na(asd.childhood),0,asd.childhood),
+         asd.pre.scz=ifelse(is.na(asd.pre.scz),0,asd.pre.scz),
+         mdd.childhood=ifelse(is.na(mdd.childhood),0,mdd.childhood),
+         mdd.pre.scz=ifelse(is.na(mdd.pre.scz),0,mdd.pre.scz))
+  
+ 
+# Medication use  --- wait until decide on specific drugs
+
+```
