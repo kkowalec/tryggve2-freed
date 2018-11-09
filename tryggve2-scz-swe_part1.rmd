@@ -251,42 +251,42 @@ grades <- fread(grades.f, sep="\t") %>%
 
 Other registers <- SKIP FOR NOW 
 ```{r read in other}
-civil <- fread("~/civil.tsv",sep="\t") %>%
-  as_tibble() %>%
-  rename("id"="LOPNR",
-         "year"="AR",
-         "civil.status"="CIVIL") %>%
-  mutate(civil.status == case_when(civil.status == 1 ~ "Unmarried",
-                                   civil.status == 2 ~ "Married man",
-                                   civil.status == 3 ~ "Married woman, not cohabiting",
-                                   civil.status == 4 | civil.status == "RP" ~ "Divorced",
-                                   civil.status == 5 ~ "Widow/Widower",
-                                   civil.status == 7 ~ "Married woman, cohabiting",
-                                   civil.status == 8 ~ "Child, <18 years",
-                                   civil.status == 9 ~ "Fosterchild, <18 years",
-                                   civil.status == "EP" ~ "Surviving partner",
-                                   civil.status == "G" ~ "Married",
-                                   civil.status == "OG" ~ "Registered partner",
-                                   civil.status == "SP" ~ "Divorced partner",
-                                   civil.status == "─" ~ "Widow/Widower",
-                                   TRUE ~ NA))
+#civil <- fread("~/civil.tsv",sep="\t") %>%
+#  as_tibble() %>%
+#  rename("id"="LOPNR",
+#         "year"="AR",
+#         "civil.status"="CIVIL") %>%
+#  mutate(civil.status == case_when(civil.status == 1 ~ "Unmarried",
+#                                   civil.status == 2 ~ "Married man",
+#                                   civil.status == 3 ~ "Married woman, not cohabiting",
+#                                   civil.status == 4 | civil.status == "RP" ~ "Divorced",
+#                                   civil.status == 5 ~ "Widow/Widower",
+#                                   civil.status == 7 ~ "Married woman, cohabiting",
+#                                   civil.status == 8 ~ "Child, <18 years",
+#                                   civil.status == 9 ~ "Fosterchild, <18 years",
+#                                   civil.status == "EP" ~ "Surviving partner",
+#                                   civil.status == "G" ~ "Married",
+#                                   civil.status == "OG" ~ "Registered partner",
+#                                   civil.status == "SP" ~ "Divorced partner",
+#                                   civil.status == "─" ~ "Widow/Widower",
+#                                   TRUE ~ NA))
 
 # ONLY AVAILABLE IN SWEDEN
 # drug register not need by other countries 
-drug <- fread("~/drug.tsv", sep="\t") %>%
-  as_tibble() %>%
-  rename("id"="LOPNR",
-         "num.pkg"="ANTAL",
-         "atc"="ATC",
-         "ddd"="DDDFORP",
-         "dose"="DOSER", #free text
-         "disp.date"="EDATUM", # (yyyy-mm-dd)
-         "pkg.size"="FORPSTL",
-         "admin.route"="LFORMGRUPP", #  +formula of medication, grouped: 7=cutaneous/transdermal, 14=rectal, 12=unspecified, 9=oral/fast
-         "drug.prod"="PRODUKTNAMN", # product name
-         "strength_alf"="STYRKA_ALF",
-         "strength_enh"="STYRKA_ENH",
-         "strength_num"="STYRKNUMERIC")
+#drug <- fread("~/drug.tsv", sep="\t") %>%
+#  as_tibble() %>%
+#  rename("id"="LOPNR",
+#         "num.pkg"="ANTAL",
+#         "atc"="ATC",
+#         "ddd"="DDDFORP",
+#         "dose"="DOSER", #free text
+#         "disp.date"="EDATUM", # (yyyy-mm-dd)
+#         "pkg.size"="FORPSTL",
+#         "admin.route"="LFORMGRUPP", #  +formula of medication, grouped: 7=cutaneous/transdermal, 14=rectal, 12=unspecified, 9=oral/fast
+#         "drug.prod"="PRODUKTNAMN", # product name
+#         "strength_alf"="STYRKA_ALF",
+#         "strength_enh"="STYRKA_ENH",
+#         "strength_num"="STYRKNUMERIC")
 
 ```
 
