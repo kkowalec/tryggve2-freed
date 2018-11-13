@@ -322,7 +322,6 @@ scz$dob <- sapply(scz$dob, paste0, "15")
 scz <- scz %>%
   mutate(dob = ymd(dob))
 
-rm(pop) # remove pop register
 
 ###############################
 # Death #######################
@@ -2236,18 +2235,39 @@ rm(grades,grades88to97,grades98toCurrent,grades.2)
 # (0	Pre-primary education)
 # 999 empty/missing
 
+# need birth year and sex from population reg
+education <- inner_join(education,pop, by="id")
+
 education <- education %>%
-  mutate(edlevel = case_when(str_detect(edlevel, "^0") ~ "Pre-primary education",
-                               str_detect(edlevel, "^1|^2") ~ "Primary and lower secondary education",
-                               str_detect(edlevel, "^3") ~ "Upper secondary education",
-                               str_detect(edlevel, "^4|^5") ~ "Post-secondary education",
-                               str_detect(edlevel, "^6") ~ "Postgraduate education",
-                               TRUE ~ NA_character_)
-         )
+  mutate(edyrs = case_when(str_detect(edlevel,"^1") ~ "6",
+                             str_detect(edlevel,"^2") ~ "9",
+                             str_detect(edlevel,"^3") ~ "11",
+                             str_detect(edlevel,"^4") ~ "12",
+                             str_detect(edlevel,"^5") ~ "14",
+                             str_detect(edlevel,"^6|^7") ~ "16",
+                                   TRUE ~ NA_character_))
+
+education <- education %>%
+  select(id,edyrs,sex,dob)
 
 
 education <- education %>%
-  select(id, edlevel)
+  filter(!is.na(edyrs))
+
+### Standardize ed-level by birth year and sex
+
+education <- education %>%
+  mutate(birth.yr = substr(dob, 1, 4))
+
+education$edyrs <- as.numeric(education$edyrs)
+education$birth.yr <- as.numeric(education$birth.yr)
+education$sex <- as.numeric(education$sex)
+
+education$z_edyrs <- rstandard(lm(education$edyrs ~ education$birth.yr + education$sex))
+
+education <- education %>%
+  select(id, z_edyrs)
+
 scz <- left_join(scz,education)
 
 rm(education)
