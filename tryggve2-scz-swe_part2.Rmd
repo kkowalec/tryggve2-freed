@@ -1,6 +1,6 @@
 ---
-title: "Tryggve2 - Major depressive disorder - Sweden (part 2)"
-author: "Lu Yi, lu.yi@ki.se"
+title: "Tryggve2 - schizophrenia - Sweden (part 2)"
+author: "Kaarina Kowalec, kaarina.kowalec@ki.se"
 date: "November 2018"
 output: 
   html_document: 
@@ -80,12 +80,42 @@ Sys.setenv(TZ="Europe/Stockholm")
 REQUIRE EDITING on the file path
 ```{r specify file path}
 # edit the file path where you have stored the part 1 data
-data.f <- "/Users/luyi/CloudStation/WORK_2018/MyProjects_with_Pat/GAPS_MDD/DATA/FREED/DATA/part1.RData"
+data.f <- "/Users/luyi/CloudStation/WORK_2018/MyProjects_with_Pat/GAPS_MDD/DATA/FREED/DATA/scz.part1.RData"
 
 # load the R data
 load(data.f) 
+```
 
-mdd <- mdd %>% as_tibble()  # needed?
+Per-diagnoses to per-individual 
+```{r collapse to per-individual}
+# 1. before collapsing the records, apply 2 criteria: 
+#    1) refine ICD codes
+    # ICD-8: 295, 2950-2954, 2956-2959, i.e. to remove 2955 (latent SCZ)
+    # ICD-9: 295A-295E, 295G, 295H, 295W, 295X, i.e. just drop 295F (latent SCZ, other codes do not exit)
+    # ICD-10: F20 (SCZ), F25 (SAD), F231 (Acute polymorphic psychotic disorder with symptoms of schizophrenia) & F232 (Acute schizophrenia-like psychotic disorder)
+#    2) ≥2 diagnoses 
+
+# select specific ICD codes
+scz.v2 <- scz %>% 
+  filter(
+    (icd.version!=10 & grepl("^295$|^2950|^2951|^2952|^2953|^2954|^2956|^2957|^2958|^2959|^295A|^295B|^295C|^295D|^295E|^295G|^295H|^295W|^295X", diagnosis)) | 
+    (icd.version==10 & grepl("^F20$|^F200|^F201|^F202|^F203|^F204|^F205|^F206|^F208|^F209|^F25$|^F250|^F251|^F252|^F258|^F259|^F231|^F232", diagnosis)) # apply the criteria #1
+  )
+
+# collapse to per-individual record and not per-admission
+scz.perind <- scz.v2 %>% 
+  arrange(id,scz_date) %>% 
+  group_by(id) %>%
+  slice(1) %>%
+  filter(nsczcontacts >= 2) %>% # apply the criteria #2
+  select(-admit.date:-icd.version, -scz_date) %>%
+  ungroup()
+
+# make list of scz cases and date of first contact for comparison with psych disorders below
+first.scz.date <- scz.perind %>%
+  select(id, first_scz_date, dob)
+  
+  
 ```
 
 ### Step 2: Exposure-Prior psychiatric history
@@ -96,144 +126,140 @@ We are only selecting those with a date (1) before first treatment contact and (
 
 + comorbid psych disorders/conditions: psych (adhd, asd, anx, bip, ed, mdd, ocd, ptsd, scz, suds, suicides)
 + medication use (wait on this-not sure which drugs to focus on)
-```{r}
-# make list of scz cases and date of first contact for comparison with psych disorders below
-first.mdd.date <- mdd %>%
-  select(id, first_mdd_date, dob)
 
-#######################  
-# ADHD ################
-#######################
+1. ADHD
+```{r ADHD}
+# first extract all individuals with ADHD diagnosis 
 adhd <- hdr %>% 
   filter(  (icd.version==9 & grepl("^314|^314A|^314B|^314C|^314J|^314W|^314X", diagnosis)) # no icd codes for ADHD prior to ICD version 9
            | (icd.version==10 & grepl("^F90|^F900|^F901|^F908", diagnosis)) 
   ) %>%
   mutate(adhd = 1,
-         admit.date = ymd(as.character(admit.date))) %>%
+         admit.date = ymd(admit.date)) %>%
   arrange(id, admit.date) %>%
   group_by(id) %>%
-  mutate(first.adhd.date = first(admit.date)) %>%
-  slice(1) %>%
-  select(id,adhd,first.adhd.date)
+  add_count(id) %>%  # record the number of diagnoses per individual into variable "n"
+  rename(nadhdcontacts = n) %>% # rename n 
+  mutate(first.adhd.date = first(admit.date)) %>% # record the first ADHD diagnosis date 
+  slice(1) %>% 
+  select(id,adhd,nadhdcontacts, first.adhd.date)
 
-adhd <- inner_join(first.scz.date,adhd) # inner join together with scz cases
-
-adhd <- adhd %>%
-  mutate(age.first.adhd = as.numeric((first.adhd.date - dob)/365.25),
+# then merge with individuals with SCZ 
+scz.adhd <- inner_join(first.scz.date,adhd, by="id") %>% # inner join together with scz cases
+  mutate(age.first.adhd = as.integer((first.adhd.date - dob)/365.25),
          adhd.childhood = ifelse(age.first.adhd <= 15, 1, 0), # only those with adhd dx before age 15 years
          adhd.pre.scz = ifelse(first.adhd.date < first_scz_date, 1, 0)  #  only those with adhd dx before scz contact
-) %>%
-  select(id,adhd.childhood,adhd.pre.scz)
+         ) %>%
+  select(id,nadhdcontacts, adhd.childhood,adhd.pre.scz)
 
-#######################
-# ASD #################
-#######################
+```
+2. ASD
+```{r ASD}
+# first extract all individuals with ASD diagnosis 
 asd <- hdr %>% 
   filter(  (icd.version==9 & grepl("^299A", diagnosis)) # no icd codes for asd prior to version 9
            | (icd.version==10 & grepl("^F840|^F841|^F845", diagnosis)) 
   ) %>%
   mutate(asd = 1,
-         admit.date = ymd(as.character(admit.date))) %>%
+         admit.date = ymd(admit.date)) %>%
   arrange(id, admit.date) %>%
   group_by(id) %>%
-  mutate(first.asd.date = first(admit.date)) %>%
+  add_count(id) %>%  # record the number of diagnoses per individual into variable "n"
+  rename(nasdcontacts = n) %>% # rename n 
+  mutate(first.asd.date = first(admit.date)) %>% # record the first diagnosis date
   slice(1) %>%
-  select(id,asd,first.asd.date)
+  select(id,asd,nasdcontacts,first.asd.date)
 
-asd <- inner_join(first.scz.date,asd) # inner join together with scz cases
+# then merge with individuals with SCZ 
+scz.asd <- inner_join(first.scz.date,asd, by="id") %>% # inner join together with scz cases
+  mutate(age.first.asd = as.integer((first.asd.date - dob)/365.25),
+         asd.childhood = ifelse(age.first.asd <= 15, 1, 0), # only those with dx before age 15 years
+         asd.pre.scz = ifelse(first.asd.date < first_scz_date, 1, 0)  #  only those with dx before scz contact
+         ) %>%
+  select(id, nasdcontacts, asd.childhood, asd.pre.scz)
 
-asd <- asd %>%
-  mutate(age.first.asd = as.numeric((first.asd.date - dob)/365.25),
-         asd.childhood = ifelse(age.first.asd <= 15, 1, 0), # only those with asd dx before age 15 years
-         asd.pre.scz = ifelse(first.asd.date < first_scz_date, 1, 0)  #  only those with asd dx before scz contact
-) %>%
-  select(id,asd.childhood,asd.pre.scz)
-
-#######################
-# Anxiety #############
-#######################
+```
+3. Anxiety
+```{r anxiety}
+# first extract all individuals with anxiety diagnosis 
 anx <- hdr %>% 
   filter(  (icd.version==8 & grepl("^300|^3000|^3002", diagnosis)) |
              (icd.version==9 & grepl("^300|^300A|^300C", diagnosis)) |
              (icd.version==10 & grepl("^F40|^F400|^F401|^F402|^F408|^F409|^F41|^F410|^F411|^F412|^F413|^F418|^F419", diagnosis)) 
   ) %>%
   mutate(anx = 1,
-         admit.date = ymd(as.character(admit.date))) %>%
+         admit.date = ymd(admit.date)) %>%
   arrange(id, admit.date) %>%
   group_by(id) %>%
+  add_count(id) %>%  # record the number of diagnoses per individual into variable "n"
+  rename(nanxcontacts = n) %>% # rename n 
   mutate(first.anx.date = first(admit.date)) %>%
   slice(1) %>%
-  select(id,anx,first.anx.date)
+  select(id, anx, nanxcontacts, first.anx.date)
 
-anx <- inner_join(first.scz.date,anx) # inner join together with scz cases
-
-anx <- anx %>%
-  mutate(age.first.anx = as.numeric((first.anx.date - dob)/365.25),
+# then merge with individuals with SCZ 
+scz.anx <- inner_join(first.scz.date,anx, by="id") %>%  # inner join together with scz cases
+  mutate(age.first.anx = as.integer((first.anx.date - dob)/365.25),
          anx.childhood = ifelse(age.first.anx <= 15, 1, 0), # only those with anx dx before age 15 years
          anx.pre.scz = ifelse(first.anx.date < first_scz_date, 1, 0)  #  only those with anx dx before scz contact
   ) %>%
-  select(id,anx.childhood,anx.pre.scz)
+  select(id, nanxcontacts, anx.childhood, anx.pre.scz)
 
-
-#######################
-# BIP #################
-#######################
-bp <- hdr %>%
+```
+4. Bipolar
+```{r bip}
+# first extract all individuals with bipolar diagnosis 
+bip <- hdr %>%
   filter( ((icd.version==8) & grepl('^2961|^2963|^2968',diagnosis)) |
           ((icd.version==9) & grepl('^296|^269A|^269C|^2691|^296D|^2694|^296E|^2965|^296F|^2966|^296G|^2697|^269H|^2691|^26989|^269W|^26999|^269X',diagnosis)) | 
             ((icd.version==10) & grepl('^F30$|^F301|^F302|^F308|^F309|^F31|^F310|^F311|^F312|^F313|^F314|^F315|^F316|^F317|^F318|^F319',diagnosis)) ) %>%
   mutate(bip = 1,
-         admit.date = ymd(as.character(admit.date))) %>%
+         admit.date = ymd(admit.date)) %>%
   arrange(id, admit.date) %>%
   group_by(id) %>%
+  add_count(id) %>%  # record the number of diagnoses per individual into variable "n"
+  rename(nbipcontacts = n) %>% # rename n 
   mutate(first.bip.date = first(admit.date)) %>%
   slice(1) %>%
-  select(id,bip,first.bip.date)
+  select(id, bip, nbipcontacts, first.bip.date)
 
-bp <- inner_join(first.scz.date,bp) # inner join together with scz cases
-
-bp <- bp %>%
-  mutate(age.first.bip = as.numeric((first.bip.date - dob)/365.25),
+scz.bip <- inner_join(first.scz.date,bip, by="id") %>%# inner join together with scz cases
+  mutate(age.first.bip = as.integer((first.bip.date - dob)/365.25),
          bip.childhood = ifelse(age.first.bip <= 15, 1, 0), # only those with bip dx before age 15 years
          bip.pre.scz = ifelse(first.bip.date < first_scz_date, 1, 0)  #  only those with bip dx before scz contact
   ) %>%
-  select(id,bip.childhood,bip.pre.scz)
-
-
-
-#######################
-# Eating Disorders ####
-#######################
+  select(id, nbipcontacts, bip.childhood, bip.pre.scz)
+```
+5. Eating disorder
+```{r eating disorder}
+# first extract all individuals with eating disorder diagnosis 
 ed <- hdr %>%
   filter(  (icd.version==8 & grepl("^7840|^3065", diagnosis))
            | (icd.version==9 & grepl("^307B|^307F", diagnosis))
-           | (icd.version==10 & grepl("^F50|^F500|^F501|^F502|^F503|^F509", diagnosis)) 
-  ) %>%
+           | (icd.version==10 & grepl("^F50|^F500|^F501|^F502|^F503|^F509", diagnosis))) %>%
   mutate(ed = 1,
-         admit.date = ymd(as.character(admit.date))) %>%
+         admit.date = ymd(admit.date)) %>%
   arrange(id, admit.date) %>%
   group_by(id) %>%
+  add_count(id) %>%  # record the number of diagnoses per individual into variable "n"
+  rename(nedcontacts = n) %>% # rename n 
   mutate(first.ed.date = first(admit.date)) %>%
   slice(1) %>%
-  select(id,ed,first.ed.date)
+  select(id, ed, nedcontacts, first.ed.date)
 
-ed <- inner_join(first.scz.date,ed) # inner join together with scz cases
-
-ed <- ed %>%
-  mutate(age.first.ed = as.numeric((first.ed.date - dob)/365.25),
+scz.ed <- inner_join(first.scz.date,ed, by="id") %>% # inner join together with scz cases
+  mutate(age.first.ed = as.integer((first.ed.date - dob)/365.25),
          ed.childhood = ifelse(age.first.ed <= 15, 1, 0), # only those with ed dx before age 15 years
          ed.pre.scz = ifelse(first.ed.date < first_scz_date, 1, 0)  #  only those with ed dx before scz contact
   ) %>%
-  select(id,ed.childhood,ed.pre.scz)
-
-
-#######################
-# MDD #################
-#######################
-
+  select(id, nedcontacts, ed.childhood, ed.pre.scz)
+```
+6. Major depression
+```{r mdd}
+# first extract all individuals with depression diagnosis 
 mdd <- hdr %>% 
-  filter(  (icd.version==8 & grepl("^2960|^2968|^2969|^2980|^3004", diagnosis)) |
-            (icd.version==9 & grepl("^296C|^296D|^311", diagnosis)) |
+  filter(  (icd.version==8 & grepl("^2960|^3004", diagnosis)) |
+            (icd.version==9 & grepl("^296B|^311", diagnosis)) |
              (icd.version==10 & grepl("^F32|^F320|^F321|^F322|^F323|^F328|^F329|^F33|^F330|^F331|^F332|^F333|^F334|^F338|^F339", diagnosis)) 
   ) %>%
   mutate(mdd = 1,
