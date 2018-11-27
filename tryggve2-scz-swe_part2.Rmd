@@ -180,7 +180,7 @@ scz.asd <- inner_join(first.scz.date,asd, by="id") %>% # inner join together wit
 
 ```
 3. Anxiety
-```{r anxiety}
+```{r Anxiety}
 # first extract all individuals with anxiety diagnosis 
 anx <- hdr %>% 
   filter(  (icd.version==8 & grepl("^300|^3000|^3002", diagnosis)) |
@@ -207,7 +207,7 @@ scz.anx <- inner_join(first.scz.date,anx, by="id") %>%  # inner join together wi
 
 ```
 4. Bipolar
-```{r bip}
+```{r Bipolar}
 # first extract all individuals with bipolar diagnosis 
 bip <- hdr %>%
   filter( ((icd.version==8) & grepl('^2961|^2963|^2968',diagnosis)) |
@@ -231,7 +231,7 @@ scz.bip <- inner_join(first.scz.date,bip, by="id") %>%# inner join together with
   select(id, nbipcontacts, bip.childhood, bip.pre.scz)
 ```
 5. Eating disorder
-```{r eating disorder}
+```{r ED}
 # first extract all individuals with eating disorder diagnosis 
 ed <- hdr %>%
   filter(  (icd.version==8 & grepl("^7840|^3065", diagnosis))
@@ -255,7 +255,7 @@ scz.ed <- inner_join(first.scz.date,ed, by="id") %>% # inner join together with 
   select(id, nedcontacts, ed.childhood, ed.pre.scz)
 ```
 6. Major depression
-```{r mdd}
+```{r MDD}
 # first extract all individuals with depression diagnosis 
 mdd <- hdr %>% 
   filter(  (icd.version==8 & grepl("^2960|^3004", diagnosis)) |
@@ -263,34 +263,36 @@ mdd <- hdr %>%
              (icd.version==10 & grepl("^F32|^F320|^F321|^F322|^F323|^F328|^F329|^F33|^F330|^F331|^F332|^F333|^F334|^F338|^F339", diagnosis)) 
   ) %>%
   mutate(mdd = 1,
-       admit.date = ymd(as.character(admit.date))) %>%
+       admit.date = ymd(admit.date)) %>%
   arrange(id, admit.date) %>%
   group_by(id) %>%
+  add_count(id) %>%  # record the number of diagnoses per individual into variable "n"
+  rename(nmddcontacts = n) %>% # rename n 
   mutate(first.mdd.date = first(admit.date)) %>%
   slice(1) %>%
-  select(id,mdd,first.mdd.date)
+  select(id, mdd, nmddcontacts, first.mdd.date)
 
-mdd <- inner_join(first.scz.date,mdd) # inner join together with scz cases
-
-mdd <- mdd %>%
-  mutate(age.first.mdd = as.numeric((first.mdd.date - dob)/365.25),
+scz.mdd <- inner_join(first.scz.date,mdd, by="id") %>% # inner join together with scz cases
+  mutate(age.first.mdd = as.integer((first.mdd.date - dob)/365.25),
          mdd.childhood = ifelse(age.first.mdd <= 15, 1, 0), # only those with mdd dx before age 15 years
          mdd.pre.scz = ifelse(first.mdd.date < first_scz_date, 1, 0)  #  only those with mdd dx before scz contact
   ) %>%
-  select(id,mdd.childhood,mdd.pre.scz)
+  select(id, nmddcontacts, mdd.childhood, mdd.pre.scz)
 
-
-#######################
-# OCD #################
-#######################
+```
+7. Obsessive-Compulsive Disorder
+```{r OCD}
+# first extract all individuals with OCD diagnosis 
 ocd <- hdr %>%
    filter((icd.version==8 & grepl("^3003", diagnosis))
       | (icd.version==9 & grepl("^300D", diagnosis))
       | (icd.version==10 & grepl("^F42|^F420|^F421|^F422|^F428|^F429", diagnosis))) %>%
   mutate(ocd = 1,
-         admit.date = ymd(as.character(admit.date))) %>%
+         admit.date = ymd(admit.date)) %>%
   arrange(id, admit.date) %>%
   group_by(id) %>%
+  add_count(id) %>%  # record the number of diagnoses per individual into variable "n"
+  rename(nmddcontacts = n) %>% # rename n 
   mutate(first.ocd.date = first(admit.date)) %>%
   slice(1) %>%
   select(id,ocd,first.ocd.date)
