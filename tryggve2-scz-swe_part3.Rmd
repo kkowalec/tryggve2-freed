@@ -2579,17 +2579,36 @@ rm(outcome6)
 
 ```
 ### Step X: Outcome 7: Disability
-Use below, as per C. Dalman BMJ 2016 paper on refugee risk of SCZ in Sweden:
+1.9 Income and civil status: from LISA register
++ Required Variables:
+  + unique ID - rename as "id"  
+  + civil - rename as "civil.status"
+  + DISPINKPERSF - rename as "income"
+
+Use below, as per C. Dalman BMJ 2016 paper on risk of SCZ in Sweden refugees:
 * DISPINKPERSF/Disposable income. Individual, estimated from the total family value, 100 SEK (1990-2004)
-* DISPINKPERSF04/Disposable income. Individual, estimated from the total family value, 100 SEK (2004-2008)
-```{r}
-
-
-
-```
-### Step X: Outcome 8: Divorce
-Use LISA register and divorce records - civil status is measured each year. one way to operationalise this is one year someone is divorce - register that as the first date?
-```{r}
+* DISPINKPERSF04/Disposable income. Individual, estimated from the total family value, 100 SEK (2004-2013)
+```{r read in income and civil levels}
+civil.1990 <- fread("",sep="\t") %>%
+  as_tibble() %>%
+  rename("id"="LOPNR",
+         "year"="AR",
+         "civil.status"="CIVIL",
+         "income"="DISPINKPERSF") %>%
+  mutate(civil.status == case_when(civil.status == 1 ~ "Unmarried",
+                                   civil.status == 2 ~ "Married man",
+                                   civil.status == 3 ~ "Married woman, not cohabiting",
+                                   civil.status == 4 | civil.status == "RP" ~ "Divorced",
+                                   civil.status == 5 ~ "Widow/Widower",
+                                   civil.status == 7 ~ "Married woman, cohabiting",
+                                   civil.status == 8 ~ "Child, <18 years",
+                                   civil.status == 9 ~ "Fosterchild, <18 years",
+                                   civil.status == "EP" ~ "Surviving partner",
+                                   civil.status == "G" ~ "Married",
+                                   civil.status == "OG" ~ "Registered partner",
+                                   civil.status == "SP" ~ "Divorced partner",
+                                   civil.status == "─" ~ "Widow/Widower",
+                                   TRUE ~ NA))
 
 
 
