@@ -371,7 +371,7 @@ scz <- left_join(scz, pop, by="id") %>%
   mutate(age.first.scz = as.integer((first_scz_date - dob)/365.25), # age at the first & second dx (as integer)
          age.second.scz = as.integer((second_scz_date - dob)/365.25)) 
 
-rm(pop) # remove pop register
+# rm(pop) # remove pop register
 
 ```
 

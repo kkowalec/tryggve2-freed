@@ -1,5 +1,5 @@
 ---
-title: "Tryggve2 - Major depressive disorder - Sweden (part 2)"
+title: "Tryggve2 - major depression - Sweden (part 2)"
 author: "Lu Yi, lu.yi@ki.se"
 date: "November 2018"
 output: 
@@ -68,10 +68,13 @@ analysis
 
 ### Step 0: Load R packages
 ```{r R packages}
-library(dplyr)
+library(tidyverse)
+#library(dplyr)
 library(data.table)
-library(ggplot2)
+#library(ggplot2)
 library(lubridate)
+library(stringr)
+library(skimr)
 
 Sys.setenv(TZ="Europe/Stockholm")
 ```
@@ -80,324 +83,877 @@ Sys.setenv(TZ="Europe/Stockholm")
 REQUIRE EDITING on the file path
 ```{r specify file path}
 # edit the file path where you have stored the part 1 data
-data.f <- "/Users/luyi/CloudStation/WORK_2018/MyProjects_with_Pat/GAPS_MDD/DATA/FREED/DATA/part1.RData"
+data.f <- "/Users/luyi/CloudStation/WORK_2018/MyProjects_with_Pat/GAPS_MDD/DATA/FREED/DATA/mdd.part1.RData"
 
 # load the R data
 load(data.f) 
-
-mdd <- mdd %>% as_tibble()  # needed?
 ```
 
-### Step 2: Exposure-Prior psychiatric history
-Need to start with making a list of any one with a psych disorder in Sweden because will need
-for family history of psychiatric disorders.
+### Step 2: Per-diagnoses to per-individual 
+REQUIRE CHECKING ICD codes 
+```{r collapse to per-individual}
+# 1. before collapsing the records, apply 2 criteria: 
+#    1) refine ICD codes
+    # ICD-8: 2960 (Involutional melancholia), 3004 (Depressive neurosis)
+    # ICD-9: 296B (Unipolar affective psychosis, melancholy), 311 (Depressive disorder, not elsewhere classified)
+    # ICD-10: F32 (Depressive episode), F33 (Recurrent depressive disorder)
+#    2) ≥2 diagnoses 
+
+# select specific ICD codes
+mdd.v2 <- mdd %>% 
+  filter( (icd.version==8 & grepl("^2960|^3004", diagnosis)) |
+            (icd.version==9 & grepl("^296B|^311", diagnosis)) |
+             (icd.version==10 & grepl("^F32|^F320|^F321|^F322|^F323|^F328|^F329|^F33|^F330|^F331|^F332|^F333|^F334|^F338|^F339", diagnosis))) # apply the criteria #1
+  
+# collapse to per-individual record and not per-admission
+mdd.perind <- mdd.v2 %>% 
+  arrange(id,mdd_date) %>% 
+  group_by(id) %>%
+  slice(1) %>%
+  filter(nmddcontacts >= 2) %>% # apply the criteria #2
+  select(-admit.date:-icd.version, -mdd_date) %>%
+  ungroup()
+
+rm(mdd.v2)
+
+# a quick summary of numeric variables
+mdd.perind %>% select_if(is.numeric) %>% skimr::skim()
+# To do: need to fix some patients with age at first dx == 0
+
+# make list of mdd cases and date of first contact for comparison with psych disorders below
+first.mdd.date <- mdd.perind %>%
+  select(id, first_mdd_date, dob)
+  
+```
+
+### Step 3: Exposure - Prior psychiatric history
+REQUIRE CHECKING ICD codes of psych disorders
+
+Need to start with making a list of any one with a psych disorder in Sweden because will need for family history of psychiatric disorders.
 
 We are only selecting those with a date (1) before first treatment contact and (2) before age 15 years (indicating childhood)
 
-+ comorbid psych disorders/conditions: psych (adhd, asd, anx, bip, ed, mdd, ocd, ptsd, suds, suicides)
++ comorbid psych disorders/conditions: psych (adhd, asd, anx, bip, ed, ocd, ptsd, scz, suds, suicides)
 + medication use (wait on this-not sure which drugs to focus on)
-```{r}
-# make list of scz cases and date of first contact for comparison with psych disorders below
-first.scz.date <- scz %>%
-  select(id, first_scz_date, dob)
 
-#######################  
-# ADHD ################
-#######################
+1. ADHD
+```{r ADHD}
+# first extract all individuals with ADHD diagnosis 
 adhd <- hdr %>% 
   filter(  (icd.version==9 & grepl("^314|^314A|^314B|^314C|^314J|^314W|^314X", diagnosis)) # no icd codes for ADHD prior to ICD version 9
            | (icd.version==10 & grepl("^F90|^F900|^F901|^F908", diagnosis)) 
   ) %>%
   mutate(adhd = 1,
-         admit.date = ymd(as.character(admit.date))) %>%
+         admit.date = ymd(admit.date)) %>%
   arrange(id, admit.date) %>%
   group_by(id) %>%
-  mutate(first.adhd.date = first(admit.date)) %>%
-  slice(1) %>%
-  select(id,adhd,first.adhd.date)
+  add_count(id) %>%  # record the number of diagnoses per individual into variable "n"
+  rename(nadhdcontacts = n) %>% # rename n 
+  mutate(first.adhd.date = first(admit.date)) %>% # record the first ADHD diagnosis date 
+  slice(1) %>% 
+  select(id,adhd,nadhdcontacts, first.adhd.date)
 
-adhd <- inner_join(first.scz.date,adhd) # inner join together with scz cases
-
-adhd <- adhd %>%
-  mutate(age.first.adhd = as.numeric((first.adhd.date - dob)/365.25),
+# then merge with individuals with MDD 
+mdd.adhd <- inner_join(first.mdd.date,adhd, by="id") %>% # inner join together with mdd cases
+  mutate(age.first.adhd = as.integer((first.adhd.date - dob)/365.25),
          adhd.childhood = ifelse(age.first.adhd <= 15, 1, 0), # only those with adhd dx before age 15 years
-         adhd.pre.scz = ifelse(first.adhd.date < first_scz_date, 1, 0)  #  only those with adhd dx before scz contact
-) %>%
-  select(id,adhd.childhood,adhd.pre.scz)
+         adhd.pre.mdd = ifelse(first.adhd.date < first_mdd_date, 1, 0)  #  only those with adhd dx before mdd contact
+         ) %>%
+  select(id,nadhdcontacts, adhd.childhood,adhd.pre.mdd)
 
-#######################
-# ASD #################
-#######################
+```
+2. ASD
+```{r ASD}
+# first extract all individuals with ASD diagnosis 
 asd <- hdr %>% 
   filter(  (icd.version==9 & grepl("^299A", diagnosis)) # no icd codes for asd prior to version 9
            | (icd.version==10 & grepl("^F840|^F841|^F845", diagnosis)) 
   ) %>%
   mutate(asd = 1,
-         admit.date = ymd(as.character(admit.date))) %>%
+         admit.date = ymd(admit.date)) %>%
   arrange(id, admit.date) %>%
   group_by(id) %>%
-  mutate(first.asd.date = first(admit.date)) %>%
+  add_count(id) %>%  # record the number of diagnoses per individual into variable "n"
+  rename(nasdcontacts = n) %>% # rename n 
+  mutate(first.asd.date = first(admit.date)) %>% # record the first diagnosis date
   slice(1) %>%
-  select(id,asd,first.asd.date)
+  select(id,asd,nasdcontacts,first.asd.date)
 
-asd <- inner_join(first.scz.date,asd) # inner join together with scz cases
+# then merge with individuals with MDD 
+mdd.asd <- inner_join(first.mdd.date,asd, by="id") %>% # inner join together with mdd cases
+  mutate(age.first.asd = as.integer((first.asd.date - dob)/365.25),
+         asd.childhood = ifelse(age.first.asd <= 15, 1, 0), # only those with dx before age 15 years
+         asd.pre.mdd = ifelse(first.asd.date < first_mdd_date, 1, 0)  #  only those with dx before mdd contact
+         ) %>%
+  select(id, nasdcontacts, asd.childhood, asd.pre.mdd)
 
-asd <- asd %>%
-  mutate(age.first.asd = as.numeric((first.asd.date - dob)/365.25),
-         asd.childhood = ifelse(age.first.asd <= 15, 1, 0), # only those with asd dx before age 15 years
-         asd.pre.scz = ifelse(first.asd.date < first_scz_date, 1, 0)  #  only those with asd dx before scz contact
-) %>%
-  select(id,asd.childhood,asd.pre.scz)
-
-#######################
-# Anxiety #############
-#######################
+```
+3. Anxiety
+```{r Anxiety}
+# first extract all individuals with anxiety diagnosis 
 anx <- hdr %>% 
   filter(  (icd.version==8 & grepl("^300|^3000|^3002", diagnosis)) |
              (icd.version==9 & grepl("^300|^300A|^300C", diagnosis)) |
              (icd.version==10 & grepl("^F40|^F400|^F401|^F402|^F408|^F409|^F41|^F410|^F411|^F412|^F413|^F418|^F419", diagnosis)) 
   ) %>%
   mutate(anx = 1,
-         admit.date = ymd(as.character(admit.date))) %>%
+         admit.date = ymd(admit.date)) %>%
   arrange(id, admit.date) %>%
   group_by(id) %>%
+  add_count(id) %>%  # record the number of diagnoses per individual into variable "n"
+  rename(nanxcontacts = n) %>% # rename n 
   mutate(first.anx.date = first(admit.date)) %>%
   slice(1) %>%
-  select(id,anx,first.anx.date)
+  select(id, anx, nanxcontacts, first.anx.date)
 
-anx <- inner_join(first.scz.date,anx) # inner join together with scz cases
-
-anx <- anx %>%
-  mutate(age.first.anx = as.numeric((first.anx.date - dob)/365.25),
+# then merge with individuals with MDD 
+mdd.anx <- inner_join(first.mdd.date,anx, by="id") %>%  # inner join together with mdd cases
+  mutate(age.first.anx = as.integer((first.anx.date - dob)/365.25),
          anx.childhood = ifelse(age.first.anx <= 15, 1, 0), # only those with anx dx before age 15 years
-         anx.pre.scz = ifelse(first.anx.date < first_scz_date, 1, 0)  #  only those with anx dx before scz contact
+         anx.pre.mdd = ifelse(first.anx.date < first_mdd_date, 1, 0)  #  only those with anx dx before mdd contact
   ) %>%
-  select(id,anx.childhood,anx.pre.scz)
+  select(id, nanxcontacts, anx.childhood, anx.pre.mdd)
 
-
-#######################
-# BIP #################
-#######################
-bp <- hdr %>%
+```
+4. Bipolar
+```{r Bipolar}
+# first extract all individuals with bipolar diagnosis 
+bip <- hdr %>%
   filter( ((icd.version==8) & grepl('^2961|^2963|^2968',diagnosis)) |
           ((icd.version==9) & grepl('^296|^269A|^269C|^2691|^296D|^2694|^296E|^2965|^296F|^2966|^296G|^2697|^269H|^2691|^26989|^269W|^26999|^269X',diagnosis)) | 
             ((icd.version==10) & grepl('^F30$|^F301|^F302|^F308|^F309|^F31|^F310|^F311|^F312|^F313|^F314|^F315|^F316|^F317|^F318|^F319',diagnosis)) ) %>%
   mutate(bip = 1,
-         admit.date = ymd(as.character(admit.date))) %>%
+         admit.date = ymd(admit.date)) %>%
   arrange(id, admit.date) %>%
   group_by(id) %>%
+  add_count(id) %>%  # record the number of diagnoses per individual into variable "n"
+  rename(nbipcontacts = n) %>% # rename n 
   mutate(first.bip.date = first(admit.date)) %>%
   slice(1) %>%
-  select(id,bip,first.bip.date)
+  select(id, bip, nbipcontacts, first.bip.date)
 
-bp <- inner_join(first.scz.date,bp) # inner join together with scz cases
-
-bp <- bp %>%
-  mutate(age.first.bip = as.numeric((first.bip.date - dob)/365.25),
+# then merge with individuals with MDD 
+mdd.bip <- inner_join(first.mdd.date,bip, by="id") %>%# inner join together with mdd cases
+  mutate(age.first.bip = as.integer((first.bip.date - dob)/365.25),
          bip.childhood = ifelse(age.first.bip <= 15, 1, 0), # only those with bip dx before age 15 years
-         bip.pre.scz = ifelse(first.bip.date < first_scz_date, 1, 0)  #  only those with bip dx before scz contact
+         bip.pre.mdd = ifelse(first.bip.date < first_mdd_date, 1, 0)  #  only those with bip dx before mdd contact
   ) %>%
-  select(id,bip.childhood,bip.pre.scz)
-
-
-
-#######################
-# Eating Disorders ####
-#######################
+  select(id, nbipcontacts, bip.childhood, bip.pre.mdd)
+```
+5. Eating disorder
+```{r ED}
+# first extract all individuals with eating disorder diagnosis 
 ed <- hdr %>%
   filter(  (icd.version==8 & grepl("^7840|^3065", diagnosis))
            | (icd.version==9 & grepl("^307B|^307F", diagnosis))
-           | (icd.version==10 & grepl("^F50|^F500|^F501|^F502|^F503|^F509", diagnosis)) 
-  ) %>%
+           | (icd.version==10 & grepl("^F50|^F500|^F501|^F502|^F503|^F509", diagnosis))) %>%
   mutate(ed = 1,
-         admit.date = ymd(as.character(admit.date))) %>%
+         admit.date = ymd(admit.date)) %>%
   arrange(id, admit.date) %>%
   group_by(id) %>%
+  add_count(id) %>%  # record the number of diagnoses per individual into variable "n"
+  rename(nedcontacts = n) %>% # rename n 
   mutate(first.ed.date = first(admit.date)) %>%
   slice(1) %>%
-  select(id,ed,first.ed.date)
+  select(id, ed, nedcontacts, first.ed.date)
 
-ed <- inner_join(first.scz.date,ed) # inner join together with scz cases
-
-ed <- ed %>%
-  mutate(age.first.ed = as.numeric((first.ed.date - dob)/365.25),
+# then merge with individuals with MDD 
+mdd.ed <- inner_join(first.mdd.date,ed, by="id") %>% # inner join together with mdd cases
+  mutate(age.first.ed = as.integer((first.ed.date - dob)/365.25),
          ed.childhood = ifelse(age.first.ed <= 15, 1, 0), # only those with ed dx before age 15 years
-         ed.pre.scz = ifelse(first.ed.date < first_scz_date, 1, 0)  #  only those with ed dx before scz contact
+         ed.pre.mdd = ifelse(first.ed.date < first_mdd_date, 1, 0)  #  only those with ed dx before mdd contact
   ) %>%
-  select(id,ed.childhood,ed.pre.scz)
-
-
-#######################
-# MDD #################
-#######################
-
-mdd <- hdr %>% 
-  filter(  (icd.version==8 & grepl("^2960|^2968|^2969|^2980|^3004", diagnosis)) |
-            (icd.version==9 & grepl("^296C|^296D|^311", diagnosis)) |
-             (icd.version==10 & grepl("^F32|^F320|^F321|^F322|^F323|^F328|^F329|^F33|^F330|^F331|^F332|^F333|^F334|^F338|^F339", diagnosis)) 
-  ) %>%
-  mutate(mdd = 1,
-       admit.date = ymd(as.character(admit.date))) %>%
-  arrange(id, admit.date) %>%
-  group_by(id) %>%
-  mutate(first.mdd.date = first(admit.date)) %>%
-  slice(1) %>%
-  select(id,mdd,first.mdd.date)
-
-mdd <- inner_join(first.scz.date,mdd) # inner join together with scz cases
-
-mdd <- mdd %>%
-  mutate(age.first.mdd = as.numeric((first.mdd.date - dob)/365.25),
-         mdd.childhood = ifelse(age.first.mdd <= 15, 1, 0), # only those with mdd dx before age 15 years
-         mdd.pre.scz = ifelse(first.mdd.date < first_scz_date, 1, 0)  #  only those with mdd dx before scz contact
-  ) %>%
-  select(id,mdd.childhood,mdd.pre.scz)
-
-
-#######################
-# OCD #################
-#######################
+  select(id, nedcontacts, ed.childhood, ed.pre.mdd)
+```
+6. Obsessive-Compulsive Disorder
+```{r OCD}
+# first extract all individuals with OCD diagnosis 
 ocd <- hdr %>%
    filter((icd.version==8 & grepl("^3003", diagnosis))
       | (icd.version==9 & grepl("^300D", diagnosis))
       | (icd.version==10 & grepl("^F42|^F420|^F421|^F422|^F428|^F429", diagnosis))) %>%
   mutate(ocd = 1,
-         admit.date = ymd(as.character(admit.date))) %>%
+         admit.date = ymd(admit.date)) %>%
   arrange(id, admit.date) %>%
   group_by(id) %>%
+  add_count(id) %>%  # record the number of diagnoses per individual into variable "n"
+  rename(nocdcontacts = n) %>% # rename n 
   mutate(first.ocd.date = first(admit.date)) %>%
   slice(1) %>%
-  select(id,ocd,first.ocd.date)
+  select(id, ocd, nocdcontacts, first.ocd.date)
 
-ocd <- inner_join(first.scz.date,ocd) # inner join together with scz cases
-
-ocd <- ocd %>%
-  mutate(age.first.ocd = as.numeric((first.ocd.date - dob)/365.25),
+# then merge with individuals with MDD 
+mdd.ocd <- inner_join(first.mdd.date,ocd, by="id") %>% # inner join together with mdd cases
+  mutate(age.first.ocd = as.integer((first.ocd.date - dob)/365.25),
          ocd.childhood = ifelse(age.first.ocd <= 15, 1, 0), # only those with ocd dx before age 15 years
-         ocd.pre.scz = ifelse(first.ocd.date < first_scz_date, 1, 0)  #  only those with ocd dx before scz contact
-  ) %>%
-  select(id,ocd.childhood,ocd.pre.scz)
-
-
-#######################
-# PTSD ################
-#######################
+         ocd.pre.mdd = ifelse(first.ocd.date < first_mdd_date, 1, 0)  ) %>% #  only those with ocd dx before mdd contact
+  select(id, nocdcontacts, ocd.childhood, ocd.pre.mdd)
+```
+7. Post-traumatic stress disorder
+```{r PTSD}
+# first extract all individuals with PTSD diagnosis 
 ptsd <- hdr %>% 
   filter(  (icd.version==8 & grepl("^307", diagnosis)) |
              (icd.version==9 & grepl("^308|^308A|^308B|^308C|^308D|^308E|^308X|^309|^309A|^309B|^309C|^309D|^309E|^309W|^309X", diagnosis)) |
-             (icd.version==10 & grepl("^F43|^F430|^F431|^F432|^F438|^F439", diagnosis)) 
-  ) %>%
+             (icd.version==10 & grepl("^F43|^F430|^F431|^F432|^F438|^F439", diagnosis)) ) %>%
   mutate(ptsd = 1,
-         admit.date = ymd(as.character(admit.date))) %>%
+         admit.date = ymd(admit.date)) %>%
   arrange(id, admit.date) %>%
   group_by(id) %>%
+  add_count(id) %>%  # record the number of diagnoses per individual into variable "n"
+  rename(nptsdcontacts = n) %>% # rename n 
   mutate(first.ptsd.date = first(admit.date)) %>%
   slice(1) %>%
-  select(id,ptsd,first.ptsd.date)
+  select(id, ptsd, nptsdcontacts, first.ptsd.date)
 
-ptsd <- inner_join(first.scz.date,ptsd) # inner join together with scz cases
-
-ptsd <- ptsd %>%
-  mutate(age.first.ptsd = as.numeric((first.ptsd.date - dob)/365.25),
+# then merge with individuals with MDD 
+mdd.ptsd <- inner_join(first.mdd.date,ptsd, by="id") %>% # inner join together with mdd cases
+  mutate(age.first.ptsd = as.integer((first.ptsd.date - dob)/365.25),
          ptsd.childhood = ifelse(age.first.ptsd <= 15, 1, 0), # only those with ptsd dx before age 15 years
-         ptsd.pre.scz = ifelse(first.ptsd.date < first_scz_date, 1, 0)  #  only those with ptsd dx before scz contact
-  ) %>%
-  select(id,ptsd.childhood,ptsd.pre.scz)
+         ptsd.pre.mdd = ifelse(first.ptsd.date < first_mdd_date, 1, 0) ) %>% #  only those with ptsd dx before mdd contact
+  select(id, nptsdcontacts, ptsd.childhood, ptsd.pre.mdd)
 
+```
+8. SCZ/SAD
+```{r SCZ}
+# first extract all individuals with SCZ/SAD diagnosis 
+scz <- hdr %>% 
+  filter((icd.version!=10 & grepl("^295$|^2950|^2951|^2952|^2953|^2954|^2956|^2957|^2958|^2959|^295A|^295B|^295C|^295D|^295E|^295G|^295H|^295W|^295X", diagnosis)) | 
+    (icd.version==10 & grepl("^F20$|^F200|^F201|^F202|^F203|^F204|^F205|^F206|^F208|^F209|^F25$|^F250|^F251|^F252|^F258|^F259|^F231|^F232", diagnosis)) )  %>%
+  mutate(scz = 1,
+       admit.date = ymd(admit.date)) %>%
+  arrange(id, admit.date) %>%
+  group_by(id) %>%
+  add_count(id) %>%  # record the number of diagnoses per individual into variable "n"
+  rename(nsczcontacts = n) %>% # rename n 
+  mutate(first.scz.date = first(admit.date)) %>%
+  slice(1) %>%
+  select(id, scz, nsczcontacts, first.scz.date)
 
-#######################
-# Substance abuse #####
-#######################
+# then merge with individuals with MDD 
+mdd.scz <- inner_join(first.mdd.date,scz, by="id") %>% # inner join together with mdd cases
+  mutate(age.first.scz = as.integer((first.scz.date - dob)/365.25),
+         scz.childhood = ifelse(age.first.scz <= 15, 1, 0), # only those with mdd dx before age 15 years
+         scz.pre.mdd = ifelse(first.scz.date < first_mdd_date, 1, 0)) %>% #  only those with mdd dx before scz contact
+  select(id, nsczcontacts, scz.childhood, scz.pre.mdd)
+
+```
+9. Substance use disorder
+```{r SUD}
+# first extract all individuals with SUD diagnosis 
 suds <- hdr %>%
   filter(  (icd.version==8 & grepl("^303|^3030|^3031|^3032|^3039|^304|^3040|^3041|^3042|^3043|^3044|^3045|^3046|^3047|^3048|^3049", diagnosis))
            | (icd.version==9 & grepl("^303|^303A|^303X|^304|^304A|^304B|^304C|^304D|^304D|^304E|^304F|^304G|^304H|^304W|^304X|^305A|^305X", diagnosis))
            | (icd.version==10 & grepl("^F10|^F100|^F101|^F102|^F103|^F104|^F105|^F106|^F107|^F108|^F109|^F11|^F110|^F111|^F112|^F113|^F114|^F115|^F116|^F117|^F118|^F119|
-                               F19|^F190|^F191|^F192|^F192|^F194|^F195|^F196|^F197|^F198|^F199", diagnosis)) 
-  ) %>%
+                               F19|^F190|^F191|^F192|^F192|^F194|^F195|^F196|^F197|^F198|^F199", diagnosis)) ) %>%
   mutate(suds = 1,
-         admit.date = ymd(as.character(admit.date))) %>%
+         admit.date = ymd(admit.date)) %>%
   arrange(id, admit.date) %>%
   group_by(id) %>%
+  add_count(id) %>%  # record the number of diagnoses per individual into variable "n"
+  rename(nsudcontacts = n) %>% # rename n 
   mutate(first.suds.date = first(admit.date)) %>%
   slice(1) %>%
-  select(id,suds,first.suds.date)
+  select(id, suds, nsudcontacts, first.suds.date)
 
-suds <- inner_join(first.scz.date,suds) # inner join together with scz cases
-
-suds <- suds %>%
-  mutate(age.first.suds = as.numeric((first.suds.date - dob)/365.25),
+# then merge with individuals with MDD 
+mdd.suds <- inner_join(first.mdd.date,suds, by="id") %>% # inner join together with mdd cases
+  mutate(age.first.suds = as.integer((first.suds.date - dob)/365.25),
          suds.childhood = ifelse(age.first.suds <= 15, 1, 0), # only those with suds dx before age 15 years
-         suds.pre.scz = ifelse(first.suds.date < first_scz_date, 1, 0)  #  only those with suds dx before scz contact
+         suds.pre.mdd = ifelse(first.suds.date < first_mdd_date, 1, 0)  #  only those with suds dx before mdd contact
   ) %>%
-  select(id,suds.childhood,suds.pre.scz)
-
-
-#######################
-# Suicides ############
-#######################
+  select(id, nsudcontacts, suds.childhood, suds.pre.mdd)
+```
+10. Suicide  <<- NO RECORDS???
+```{r suicide}
+# first extract all individuals with suicide attempts?  
 sui <- hdr %>%
    filter((icd.version==8 & grepl("^E950|^E951|^E952$|^E9520|^E9521|^E9529|^E953|^E954|^E955|^E956|^E957|^E958|^E959", diagnosis))
       | (icd.version==9 & grepl("^E95A|^E95B|^E95C|^E95D|^E95E|^E95F|^E95G|^E95H|^E95W|^E95X", diagnosis))
-      | (icd.version==10)) %>%
+      | (icd.version==10 & grepl("^X60|^X61|^X62|^X63|^X64|^X65|^X66|^X67|^X68|^X69|^X70|^X71|^X72|^X73|^X74|^X75|^X76|^X77|^X78|^X79|^X80|^X81|^X82|^X83|^X84", diagnosis)) ) %>%
   mutate(sui = 1,
-         admit.date = ymd(as.character(admit.date))) %>%
+         admit.date = ymd(admit.date)) %>%
   arrange(id, admit.date) %>%
   group_by(id) %>%
+  add_count(id) %>%  # record the number of diagnoses per individual into variable "n"
+  rename(nsuicontacts = n) %>% # rename n 
   mutate(first.sui.date = first(admit.date)) %>%
   slice(1) %>%
-  select(id,sui,first.sui.date)
-sui <- inner_join(first.scz.date,sui) # inner join together with scz cases
+  select(id, sui, nsuicontacts, first.sui.date)
 
-sui <- sui %>%
-  mutate(age.first.sui = as.numeric((first.sui.date - dob)/365.25),
+# then merge with individuals with MDD 
+mdd.sui <- inner_join(first.mdd.date,sui, by="id") %>% # inner join together with mdd cases
+  mutate(age.first.sui = as.integer((first.sui.date - dob)/365.25),
          sui.childhood = ifelse(age.first.sui <= 15, 1, 0), # only those with sui dx before age 15 years
-         sui.pre.scz = ifelse(first.sui.date < first_scz_date, 1, 0)  #  only those with sui dx before scz contact
+         sui.pre.mdd = ifelse(first.sui.date < first_mdd_date, 1, 0)  #  only those with sui dx before mdd contact
   ) %>%
-  select(id,sui.childhood,sui.pre.scz)
+  select(id, nsuicontacts, sui.childhood, sui.pre.mdd)
+```
+11. Merge all psych comorbidity
+```{r All psych comorbidity}
 
+psych.comorbid <- full_join(mdd.bip, mdd.anx, by = "id")
+psych.comorbid <- full_join(psych.comorbid,mdd.ptsd, by = "id")
+psych.comorbid <- full_join(psych.comorbid, mdd.adhd, by = "id")
+psych.comorbid <- full_join(psych.comorbid, mdd.ed, by = "id")
+psych.comorbid <- full_join(psych.comorbid, mdd.suds, by = "id")
+psych.comorbid <- full_join(psych.comorbid, mdd.ocd, by = "id")
+psych.comorbid <- full_join(psych.comorbid, mdd.asd, by = "id")
+psych.comorbid <- full_join(psych.comorbid, mdd.scz, by = "id")
+psych.comorbid <- full_join(psych.comorbid, mdd.sui, by = "id") 
 
-#########################################
-###### MERGE ALL psych DISORDERS ########
-#########################################
-
-psych.comorbid <- full_join(bp,anx)
-psych.comorbid <- full_join(psych.comorbid,ptsd)
-psych.comorbid <- full_join(psych.comorbid,adhd)
-psych.comorbid <- full_join(psych.comorbid,ed)
-psych.comorbid <- full_join(psych.comorbid,sui)
-psych.comorbid <- full_join(psych.comorbid,suds)
-psych.comorbid <- full_join(psych.comorbid,ocd)
-psych.comorbid <- full_join(psych.comorbid,asd)
-psych.comorbid <- full_join(psych.comorbid,mdd)
-
-rm(bp,anx,ptsd,adhd,ed,sui,suds,ocd,asd,mdd) # remove original dataframes
+rm(mdd.bip,mdd.anx,mdd.ptsd,mdd.adhd,mdd.ed,mdd.sui,mdd.suds,mdd.ocd,mdd.asd,mdd.scz) # remove original dataframes
  
-scz <- left_join(scz,psych.comorbid)
+```
+12. Merge with MDD per-indiv records
+```{r merge with MDD ind}
+mdd.perind <- left_join(mdd.perind, psych.comorbid, by = "id")
 rm(psych.comorbid)
 
-scz <- scz %>%
-  mutate(bip.childhood=ifelse(is.na(bip.childhood),0,bip.childhood),
-         bip.pre.scz=ifelse(is.na(bip.pre.scz),0,bip.pre.scz),
-         anx.childhood=ifelse(is.na(anx.childhood),0,anx.childhood),
-         anx.pre.scz=ifelse(is.na(anx.pre.scz),0,anx.pre.scz),
-         ptsd.childhood=ifelse(is.na(ptsd.childhood),0,ptsd.childhood),
-         ptsd.pre.scz=ifelse(is.na(ptsd.pre.scz),0,ptsd.pre.scz),
-         adhd.childhood=ifelse(is.na(adhd.childhood),0,adhd.childhood),
-         adhd.pre.scz=ifelse(is.na(adhd.pre.scz),0,adhd.pre.scz),
-         ed.childhood=ifelse(is.na(ed.childhood),0,ed.childhood),
-         ed.pre.scz=ifelse(is.na(ed.pre.scz),0,ed.pre.scz),
-        sui.childhood=ifelse(is.na(sui.childhood),0,sui.childhood),
-         sui.pre.scz=ifelse(is.na(sui.pre.scz),0,sui.pre.scz),
-         suds.childhood=ifelse(is.na(suds.childhood),0,suds.childhood),
-         suds.pre.scz=ifelse(is.na(suds.pre.scz),0,suds.pre.scz),
-         ocd.childhood=ifelse(is.na(ocd.childhood),0,ocd.childhood),
-         ocd.pre.scz=ifelse(is.na(ocd.pre.scz),0,ocd.pre.scz),
-        asd.childhood=ifelse(is.na(asd.childhood),0,asd.childhood),
-         asd.pre.scz=ifelse(is.na(asd.pre.scz),0,asd.pre.scz),
-         mdd.childhood=ifelse(is.na(mdd.childhood),0,mdd.childhood),
-         mdd.pre.scz=ifelse(is.na(mdd.pre.scz),0,mdd.pre.scz))
-  
+# replace the NAs in comorbidity columns as 0
+mdd.perind <- mdd.perind %>%
+  mutate_at(vars(ends_with("pre.mdd")),funs(replace(., is.na(.),0))) %>%  # replace the NAs with 0s in the variables ending with "pre.mdd" 
+  mutate_at(vars(ends_with("childhood")),funs(replace(., is.na(.),0))) # similar as above
  
-# Medication use  --- wait until decide on specific drugs
+# a quick summary of numeric variables
+mdd.perind %>% select(nbipcontacts:sui.pre.mdd) %>% skimr::skim()
 
+```
+13. Medication use  --- wait until decide on specific drugs
+
+
+### Step 4: Exposure - Family history of psychiatric disorder
+
+To get at family history of psychiatric disorders, 
+1) we first need lists of individuals with 11 disorders (adhd, asd, anx, bip, ed, mdd, ocd, ptsd, scz, suds, suicides)
+2) create 4 new familial relationships: 1) mother, 2) father, 3) child, 4) full sibs
+3) inner join w MDD patient list with each of the 4 familial relationships and see if any have the disorders - prior to the index person's onset!!
+
+1. FHx of MDD <- NEED REVIEW
+```{r linking MDD patients with parents & children}
+# add an indicator of MDD first
+first.mdd.date <- first.mdd.date %>%
+  mutate(mdd=1)
+
+# create list of 'parent' and 'child' with index ID being those w MDD
+mdd.parent<- inner_join(first.mdd.date, parent, by = "id")
+mdd.kid <- inner_join(first.mdd.date, child, by = "id")
+
+# list of mother IDs
+mother <- mdd.parent %>%
+  select(mom.id) %>%
+  distinct(mom.id) %>% 
+  filter(!is.na(mom.id)) # remove the NA
+
+# list of father IDs
+father <- mdd.parent %>%
+  select(dad.id) %>%
+  distinct(dad.id) %>% 
+  filter(!is.na(dad.id)) # remove the NA
+
+# list of kids IDs
+kid <- mdd.kid %>%
+  select(kid.id) %>%
+  distinct(kid.id)
+
+# list of sib IDs
+# first, pull out parents IDs 
+tmp <- mdd.parent %>% 
+  filter(!is.na(dad.id) & !is.na(mom.id)) %>% 
+  select(id, dad.id, mom.id) %>% 
+  rename(index.id = id)
+# then, merge with MGR to find out full siblings
+sib <- left_join(tmp, parent, by=c("dad.id", "mom.id")) %>% 
+  group_by(dad.id, mom.id) %>% 
+  filter(index.id != id) %>% # remove the same person, i.e. only extract the siblings of the index person
+  rename(sib.id = id, 
+         id = index.id ) %>% 
+  ungroup() %>%
+  select(sib.id, id) 
+
+```
+
+```{r mother MDD status}
+# link mother's ID with MDD list
+mother.mdd <- inner_join(mother, first.mdd.date, by = c("mom.id" = "id")) %>%  # match motherID with ID in MDD dataset
+  select(-dob) %>%
+  rename(mom.mdd = mdd,
+        first_mdd_date.mom = first_mdd_date)
+
+# get link between mother child
+mother.mdd <- left_join(mother.mdd, parent, by = "mom.id")  # can have multiple records (mother had several children)
+
+# get info on index person's mdd
+mother.mdd <- left_join(mother.mdd, first.mdd.date, by = "id") 
+
+# apply criteria: mother's dx (just use first dx) must be before the index person's onset  
+mother.mdd <- mother.mdd %>%
+  mutate(mom.mdd = ifelse(first_mdd_date.mom < first_mdd_date, 1, 0)) %>% # mom.mdd=1 if before index person's onset, otherwise=0 
+#  arrange(mom.id,desc(mom.mdd)) %>% # so that "slice(1)" below selects mom.mdd=1 if multiple kids <- skip because unnecessary to only keep one mom record, note, later will match both mom.id and id.
+#  group_by(mom.id) %>%
+#  slice(1) %>%
+  select(mom.mdd, mom.id, id)
+```
+
+```{r father MDD status}
+# link father's ID with MDD list
+father.mdd <- inner_join(father, first.mdd.date, by = c("dad.id" = "id")) %>%
+  select(-dob) %>%
+  rename(dad.mdd = mdd,
+        first_mdd_date.dad= first_mdd_date)
+
+# get link between father child
+father.mdd <- left_join(father.mdd, parent, by = "dad.id") # can have multiple records (mother had several children)
+
+# get info on index person's mdd
+father.mdd <- left_join(father.mdd, first.mdd.date, by = "id") # get info from child mdd
+
+# apply criteria: father's dx (just use first dx) must be before the index person's onset  
+father.mdd <- father.mdd %>%
+  mutate(dad.mdd = ifelse(first_mdd_date.dad < first_mdd_date, 1, 0)) %>% # dad.mdd=1 if before index person's onset, otherwise=0 
+#  arrange(dad.id,desc(dad.mdd)) %>% # so that "slice(1)" below selects dad.mdd=1 if multiple kids <- skip 
+#  group_by(dad.id) %>%
+#  slice(1) %>%
+  select(dad.mdd, dad.id, id)
+```
+
+```{r kid MDD status}
+# link kid's ID with MDD list
+kids.mdd <- inner_join(kid, first.mdd.date, by = c("kid.id" = "id")) %>%
+  select(-dob) %>%
+  rename(kid.mdd = mdd,
+        first_mdd_date.kid = first_mdd_date)
+
+# get link between kid and index person
+kids.mdd <- left_join(kids.mdd, child, by = "kid.id") 
+
+# get info on index person's mdd
+kids.mdd <- left_join(kids.mdd, first.mdd.date, by = "id")
+
+# apply criteria: kid's dx (just use first dx) must be before the index person's onset  
+kids.mdd <- kids.mdd %>%
+  mutate(kid.mdd = ifelse(first_mdd_date.kid < first_mdd_date, 1, 0)) %>% # kid.mdd=1 if before index person's onset, otherwise=0 
+#  arrange(kid.id,desc(kid.mdd)) %>% # so that "slice(1)" below selects kid.mdd=1 if both parents <- skip
+#  group_by(kid.id) %>%
+#  slice(1) %>%
+  select(kid.mdd, kid.id, id)
+```
+
+```{r full sib MDD status}
+
+# link sibling's ID with MDD list
+sib.mdd <- inner_join(sib, first.mdd.date, by = c("sib.id" = "id")) %>%  # match sibID with ID in MDD dataset
+  select(-dob) %>%
+  rename(sib.mdd = mdd,
+        first_mdd_date.sib = first_mdd_date)
+
+# get info on index person's mdd
+sib.mdd <- left_join(sib.mdd, first.mdd.date, by = "id") 
+
+# apply criteria: sib's dx (just use first dx) must be before the index person's onset  
+sib.mdd <- sib.mdd %>%
+  mutate(sib.mdd = ifelse(first_mdd_date.sib < first_mdd_date, 1, 0)) %>% # mom.mdd=1 if before index person's onset, otherwise=0 
+#  arrange(sib.id,desc(sib.mdd)) %>% 
+#  group_by(sib.id) %>%
+#  slice(1) %>%
+  select(sib.mdd, sib.id, id)
+
+```
+
+```{r derive FHx of MDD}
+# join back with parents & kids file 
+mdd.parent <- left_join(mdd.parent, mother.mdd, by = c("mom.id", "id"))
+mdd.parent <- left_join(mdd.parent, father.mdd, by = c("dad.id", "id"))
+mdd.parent <- left_join(mdd.parent, sib.mdd, by = c("id")) %>% select(-sib.id)
+
+mdd.kid <- left_join(mdd.kid, kids.mdd, by = c("kid.id", "id"))
+
+# might be interested at some point as to whether or not someone had a kid - so add another variable 'fecund'
+# less of interest for MDD, but derive anyway
+mdd.kid <- mdd.kid %>%
+  mutate(fecund = 1) %>% 
+  select(id, kid.mdd, fecund) %>%
+  arrange(id, desc(kid.mdd)) %>% # remove multiple entries in kids (i.e. >1 kid), keep only one record
+  group_by(id) %>%
+  slice(1)
+
+#mdd.parent$mom.mdd <- as.integer(mdd.parent$mom.mdd)
+#mdd.parent$dad.mdd <- as.integer(mdd.parent$dad.mdd)
+
+# merge parents and kids mdd 
+fhx <- full_join(mdd.parent, mdd.kid,by="id")
+
+# add variable that indicates family history yes or no
+mdd.fhx <- fhx %>%
+  # if any of the 4 relatives has mdd (before index person), then fhx = 1
+  # *WRONG*: if none of the 4 relatives has mdd (before index person), then fhx = 0   # *CORRECT*:if any of the 4 relatives has no mdd (Note: after the first condition was applied, this basically grabs those status of 0s or NAs), then fhx = 0
+  # otherwise NAs
+  mutate(fhx.mdd = case_when(mom.mdd==1 | dad.mdd==1 | kid.mdd==1 | sib.mdd==1 ~ 1,
+                         mom.mdd==0 | dad.mdd==0 | kid.mdd==0 | sib.mdd==0 ~ 0,
+                         TRUE ~ NA_real_)) %>%  
+  select(-first_mdd_date:-mom.id) # drop unwanted columns
+
+# filter duplicates in case any 
+mdd.fhx <- mdd.fhx %>%
+  select(id, fhx.mdd, fecund) %>%
+  arrange(id,desc(fhx.mdd)) %>%
+  group_by(id) %>%
+  slice(1)
+  
+# check the fhx compared with each relative's status using the following line
+# table(mdd.fhx$mom.mdd, mdd.fhx$fhx.mdd, exclude=NULL)
+```
+
+```{r merge with mdd ind}
+# finally, merge with the main database of mdd patients
+mdd.perind <- left_join(mdd.perind, mdd.fhx, by = "id")
+
+# a quick summary of numeric variables
+mdd.perind %>% select(fhx.mdd, fecund) %>% skimr::skim()
+
+
+## cleaning up
+
+# keep fhx just in case need more details, but rename as 'fhx.mdd.wide'
+fhx -> fhx.mdd.wide
+
+# remove unwanted dataframes
+rm(mdd.fhx, mother.mdd, father.mdd, kids.mdd, sib.mdd, fhx)  
+
+#rm(mdd.parent,mdd.kid)
+```
+
+2. FHx of other psych disorders <- GET BACK TO THIS
+Note: 
+1) lists of individuals with other psych disorders (adhd, asd, anx, bip, ed, mdd, ocd, ptsd, scz, suds, suicides) are ready, see Step 3. 
+2) the 4 relationships are ready too, see Chunk 17 - linking SCZ patients with parents & children
+3) do similar as did for FHx of SCZ
+
+2.1 FHx of ADHD
+2.2 FHx of ASD
+2.3 FHx of Anxiety
+2.4 FHx of Bipolar
+2.5 FHx of Eating disorder
+2.6 FHx of Major depression
+2.7 FHx of Obsessive-Compulsive Disorder
+2.8 FHx of Post-traumatic stress disorder
+2.9 FHx of Substance use disorder
+2.10 FHx of Suicide
+
+### Step 5: Exposure - Prior medical history - TO DO 
+### Step 6: Exposure - Education
++ Year 9 grades
++ Educational attainment
+```{r year 9 grade}
+# check summary of year 9 grade by year
+grades %>% 
+  group_by(grad.yr) %>% 
+  summarise(mean(avg.grade.fr88), sum(is.na(avg.grade.fr88)), mean(merit.grade.fr98), sum(is.na(merit.grade.fr98)))
+# so the variable 'avg.grade.fr88' is grading system used in between 1988-1997
+#   - better to know how many subjects were the average grade based off <- find out more.
+# and the varialbe 'merit.grade.fr98' is grading system used in 1998+
+
+# need to: 
+# 0) divide the dataset into 2 subsets according to the two grading systems
+# 1) (only for the old grading system) the range of 'avg.grade.fr88' should be 1-5, not 0-5, 0s should be set as missing 
+# 2) keep only one record for each individual (i.e. remove other records for duplicate IDs)
+# 3) standardise the grades by year
+
+# for years between 1988-1997
+grades.1 <- grades %>% 
+  filter(grad.yr <= 1997) %>%  # correspond to #0 in the above list (part1)
+  mutate(avg.grade.fr88 = ifelse(avg.grade.fr88==0, NA, avg.grade.fr88)) %>% # correspond to #1 
+  filter(!is.na(avg.grade.fr88)) %>%  # keep only non-missing records
+  arrange(id, grad.yr) %>% # order by ID & year
+  group_by(id) %>% # group by ID
+  slice(1) %>% # correspond to #2. This will keep record from the earliest year if spanning multiple years, random if same year
+  ungroup() %>% # remove ID-grouping
+  group_by(grad.yr) %>% # change grouping variable to be the assessment year
+  mutate(grade.std_yr = scale(avg.grade.fr88)) %>% # correspond to #3. For each assessment year (group variable), apply 'scale' funcation to the score, i.e. to standardise the score by each year, and then rename as 'grade.std_yr' (grade standardised by year)
+  ungroup() %>% # remove year-grouping
+  select(id, grad.yr, grade.std_yr) # select only the required column 
+# complex codes above, but have tested bits by bits, so it should work. 
+ 
+# for years between 1998-
+grades.2 <- grades %>% 
+  filter(grad.yr >= 1998) %>%  # correspond to #0 in the above list (part2)
+#  mutate(avg.grade.fr88 = ifelse(avg.grade.fr88==0, NA, avg.grade.fr88)) %>% # correspond to #1 - skip b/c not required for merit.grade.fr98
+  filter(!is.na(merit.grade.fr98)) %>%  # keep only non-missing records
+  arrange(id, grad.yr) %>% # order by ID & year
+  group_by(id) %>% # group by ID
+  slice(1) %>% # correspond to #2. This will keep record from the earliest year if spanning multiple years, random if same year
+  ungroup() %>% # remove ID-grouping
+  group_by(grad.yr) %>% # change grouping variable to be the assessment year
+  mutate(grade.std_yr = scale(merit.grade.fr98)) %>% # correspond to #3. For each assessment year (group variable), apply 'scale' funcation to the score, i.e. to standardise the score by each year, and then rename as 'grade.std_yr' (grade standardised by year)
+  ungroup() %>% # remove year-grouping
+  select(id, grad.yr, grade.std_yr) # select only the required column 
+
+# combine the two parts
+grades.std <- bind_rows(grades.1, grades.2) %>% 
+  # remove further duplicate ID if any
+  arrange(id, grad.yr) %>%
+  group_by(id) %>% 
+  slice(1) %>%
+  ungroup() %>% 
+  select(id, grade.std_yr)
+
+# check the histogram of the Year 9 grades which has been standardised by year
+# n.b. not necessarily a normal distribution as we've standardised by each year (only normally distributed within each year)
+hist(grades.std$grade.std_yr, freq=F, main="Year 9 grades standardised by year", xlab="standardised grade") 
+
+```
+
+```{r merge grade with MDD ind}
+# finally, merge with the main database of MDD patients
+mdd.perind <- left_join(mdd.perind, grades.std, by = "id")
+
+# cleaning up
+# remove unwanted data frames
+rm(grades.1, grades.2, grades.std)
+
+```
+
+```{r educational attainement}
+# Background: specific coding for education level in Sweden: www.scb.se/statistik/UF/UF0506/SUN2000English%20version.doc
+# The first digit gives a broad indication of the level of education and corresponds to ‘level’ in ISCED 97. 
+# first digit in ISCED 97                                       conversion to EduYear (see below for details)
+# 6	Postgraduate education                                      -> EduYear = 22
+# 5	Post-secondary education, two years or longer               -> EduYear = 19
+# 4	Post-secondary education, less than two years               -> EduYear = 15
+# 3	Upper secondary education                                   -> EduYear = 13
+# 2	Primary and lower secondary education, 9 (or 10) years      -> EduYear = 10
+# 1	Primary and lower secondary education, less than 9 years    -> EduYear = 7
+# (0	Pre-primary education)
+# 999 empty/missing
+
+# How to convert ISCED to EduYears?
+# a) convert according to the duration specified for each code (3-digits), see the .doc file for more details
+# b) use the international standard, e.g. the one used in the educational attainment GWAS https://www.nature.com/articles/nature17671 (Okbay A, et al. Nature 2016). esp. S.Tab 1.2 for conversion and S.Tab 1.3 for descriptions on Swedish data (twingene, salty)
+# Use b) for now, see the above conversion
+
+# examine the distinct levels of education and the counts in each level
+education %>% count(edlevel)
+
+# Need to: 
+# 1) set 999 as missing
+# 2) take the first digit in the 'edlevel' variable, and recategorize according to the conversion above
+# 3) standardise the converted EduYear by birth year and sex
+
+# need birth year and sex from population register
+pop <- fread(pop.f, sep="\t") %>%
+  as_tibble() %>%
+  rename("id"="LOPNR","sex"="KON", # 1 = male, 2 = female
+         "birth.country"="FODELSEGRUPP", # country of birth
+         "birth.county"="FODELSELAN", # county of birth in each country
+         "dob"="FODELSEDATUM") %>%
+  select(-birth.county) %>% # drop birth county
+  mutate(swe.born = case_when(birth.country == 0 ~ 1,birth.country != 0 ~ 0)) %>% # add an indicator of Sweden born (1=SWE, 0=non-SWE, NAs=unknown)
+  mutate(dob = paste(as.character(dob),"15",sep=""))  # add 15th as day of the month
+
+education <- left_join(education, pop, by="id")
+
+# recategoris
+education <- education %>%
+  mutate(edlevel = as.integer(substr(edlevel, 1, 1))) %>% # correspond to #2 above, take the first digits in 'edlevel'
+  mutate(EduYear = case_when(edlevel == 1 ~ 7,  # correspond to #2 above, recategorize
+                             edlevel == 2 ~ 10,
+                             edlevel == 3 ~ 13,
+                             edlevel == 4 ~ 15,
+                             edlevel == 5 ~ 19,
+                             edlevel == 6 ~ 22,
+                             edlevel == 9 ~ NA_real_, # correspond to #1, set 9 code as missing
+                             TRUE ~ NA_real_)) %>% # all other coding (if any) will be set as missing
+  filter(!is.na(EduYear) & !is.na(dob) & !is.na(sex)) %>%  # select only those with non-missing values in EduYear & in population register (b/c cannot apply #3 on missing data)
+  filter(swe.born == 1) %>% # also select only those born in SWE
+  mutate(birth.yr = substr(dob, 1, 4)) # extract the birth year
+  
+# before applying #3, check summary statistics of mean EduYears stratified by birthyr and sex (and swe.born)
+edu.sum <- education %>% 
+  group_by(birth.yr, sex) %>% 
+  summarise(N=n(), EduYear.mean = mean(EduYear),EduYear.sd = sd(EduYear))
+
+# quick plotting
+# Note: do not plot beyond 1980, as many born after 1980 have not completed all education yet (mean EduYear starts to dip after this year)
+ggplot(data=edu.sum, aes(x=as.integer(birth.yr), y= EduYear.mean, group = sex)) +
+  geom_line(aes(color=as.factor(sex))) +
+  geom_point(aes(color=as.factor(sex))) +
+  labs(title = "Trend of mean EduYears by birth cohort (whole SWE population, stratified by sex)",
+    x="Birth Year", y="Mean EduYear") +
+  scale_x_continuous(limits = c(1911, 1980)) + 
+  scale_colour_manual("Sex", labels = c("male","female"), values = 1:2)  
+# clear trend, thus apply standardisation
+
+### Corresponds to #3, standardize EduYear by birth year and sex
+education.std <-  education  %>%
+  group_by(birth.yr, sex) %>% 
+  mutate(EduYr.std_byr_sex = scale(EduYear)) %>% 
+  ungroup() %>% 
+  filter(!is.na(EduYr.std_byr_sex)) # standardisation further generated some NAs? <- filter for now
+
+
+# can check whether standardisation is properly done using the following: 
+education.std %>% 
+  group_by(birth.yr, sex) %>% 
+  summarise(mean(EduYr.std_byr_sex), sd(EduYr.std_byr_sex))
+
+education.std <- education.std %>%  select(id, EduYr.std_byr_sex) 
+```
+
+```{r merge edu year with MDD ind}
+# finally, merge with the main database of MDD patients
+mdd.perind <- left_join(mdd.perind, education.std, by = "id")
+
+# cleaning up
+# remove unwanted data frames
+rm(education.std)
+
+```
+
+### Step 7: Exposure - Family of origin
++ parental ages at birth
++ parental SES-education-occupation-income
++ birth order
++ family composition (number of parents/partners, parental criminality-incarceration, divorce, siblings, out-of-home placement)
+```{r parental age at birth}
+
+# need pre-defined dataset: mdd.parent, which incl. variables of id, dob, dad.id, mom.id 
+# (here does not need mdd.kid)
+
+# paternal age at child birth: 
+parent.age <- left_join(mdd.parent, pop, by=c( "dad.id" = "id")) %>% # merge with population register to get dob for the dad
+  select(-first_mdd_date, -mdd, -sex, -birth.country, -swe.born) %>% # drop unwanted
+  rename(index.dob = dob.x) %>% # index person's dob
+  mutate(dad.dob = ymd(dob.y), dob.y=NULL) %>% # father's dob
+  mutate(paternal_age = as.integer((index.dob - dad.dob)/365.25)) # calculate father's age
+  
+# maternal age at child birth: 
+parent.age <- left_join(parent.age, pop, by=c( "mom.id" = "id")) %>% # merge with population register to get dob for the mom
+  select(-sex, -birth.country, -swe.born) %>% 
+  mutate(mom.dob = ymd(dob), dob=NULL) %>% # mother's dob
+  mutate(maternal_age = as.integer((index.dob - mom.dob)/365.25)) # calculate mother's age
+  
+# check summary statistics of mean maternal/paternal age stratified by birthyr 
+parentage.sum <- parent.age %>% 
+  mutate(birth.yr = substr(index.dob, 1, 4)) %>% # grab birth year
+  group_by(birth.yr) %>% 
+  summarise(
+    N=n(), 
+    paternal_age.mean = mean(paternal_age, na.rm=T),
+    maternal_age.mean = mean(maternal_age, na.rm=T))
+
+# reformat 
+parentage.sum.2 <- parentage.sum %>%
+  gather(key, mean , -birth.yr, -N) %>% 
+  separate(key, c("parent", "tmp"), "\\.") %>% 
+  select(-tmp)
+
+# quick plotting
+ggplot(data=parentage.sum.2, aes(x=as.integer(birth.yr), y= mean, group = parent)) +
+  geom_line(aes(color=as.factor(parent))) +
+  geom_point(aes(color=as.factor(parent))) +
+  labs(title = "Parental age at child birth (MDD patients as index)",
+       x="Birth Year", y="Mean parental age at child birth") +
+  scale_x_continuous(limits = c(1932, 1995)) +
+  scale_y_continuous(limits = c(20, 35)) +
+  theme(legend.title=element_blank()) 
+# looks like parental age is fairly stable over the birth years. 
+# no need to standardise by birth year. 
+
+
+```
+
+```{r merge parental age with MDD ind}
+# finally, merge with the main database of MDD patients
+mdd.perind <- 
+  left_join(mdd.perind, parent.age, by = "id") %>% 
+  select(-index.dob, -dad.id, -mom.id, -dad.dob, -mom.dob)
+
+# cleaning up
+# remove unwanted data frames
+rm(parentage.sum, parentage.sum.2)
+
+```
+
+```{r parental SES - TO DO}
+# parental SES-education-occupation-income
+
+```
+
+```{r parental education - TO DO}
+# parent education - linking from above education register + multigen reg
+
+```
+
+```{r birth order - TO DO}
+
+```
+
+```{r family composition - TO DO}
+# family composition (number of parents/partners, divorce, siblings, out-of-home placement)
+# multigeneration register for number of parents, kids
+
+```
+
+### Step 8: Exposure - Childhood trauma
++ parental death: cause of death + multigen that occurs <= 15 year (to be consistent with previous definition of psych comorbidity during childhood)
++ severe medical illness = "severe" would be? age < 18 year?  
+```{r Childhood trauma}
+
+# need pre-defined dataset: mdd.parent, which incl. variables of id, dob, dad.id, mom.id 
+
+# need to read in CauseDeath register again
+death <- fread(death.f, sep="\t") %>%
+  as_tibble() %>%
+  rename("id"="LOPNR","dod"="X_DODSDATUM")
+
+# index person's age at father's death: 
+parent.death <- left_join(mdd.parent, death, by=c( "dad.id" = "id")) %>% # merge with cause of death register to get dod for the dad
+  select(-first_mdd_date, -mdd) %>% # drop unwanted
+  rename(index.dob = dob) %>% # index person's date of birth
+  mutate(dad.dod = ymd(dod), dod=NULL) %>% # father's date of death
+  mutate(age_fatherdied = as.integer((dad.dod -index.dob )/365.25), # calculate index person's age when father died
+         fatherdied.childhood = ifelse(age_fatherdied <= 15, 1, 0)) # decide whether father died at index's childhood, bf 15 yo 
+
+# index person's age at mother's death: 
+parent.death <- left_join(parent.death, death, by=c( "mom.id" = "id")) %>% # merge with cause of death register to get dod for the mom
+  mutate(mom.dod = ymd(dod), dod=NULL) %>% # mother's date of death
+  mutate(age_motherdied = as.integer((mom.dod -index.dob )/365.25), # calculate index person's age when mother died
+         motherdied.childhood = ifelse(age_motherdied <= 15, 1, 0)) # decide whether mother died at index's childhood, bf 15 yo 
+
+# define parental bereavement as childhood trauma
+parent.death %<>% 
+  # if either parent died before index person was 15 years old, then parental.breavement = 1
+  # if neither of the parents died before index was 15, then parental.breavement = 0   
+  # otherwise NAs
+  mutate(parental.breavement = case_when(motherdied.childhood==1 | fatherdied.childhood==1 ~ 1,
+                         motherdied.childhood==0 & fatherdied.childhood==0 ~ 0,
+                         TRUE ~ NA_real_)) %>% 
+  select(id, parental.breavement)
+
+# need to check the cross-table
+table(parent.death$parental.breavement, exclude=NULL)
+
+```
+
+```{r merge parental bereavement with MDD ind}
+# finally, merge with the main database of MDD patients
+mdd.perind <- 
+  left_join(mdd.perind, parent.death, by = "id")
+
+# cleaning up
+# remove unwanted data frames
+rm(parent.death)
+
+```
+  
+### Check missing data in all exposures
+```{r missingness}
+# check missing data on each variable
+mdd.perind %>% purrr::map_df(~ sum(is.na(.))) %>% gather(variable, N_missing)
+
+```
+
+### SAVE ALL THE DATA 
+```{r save data}
+save.image(file = "/Users/luyi/CloudStation/WORK_2018/MyProjects_with_Pat/GAPS_MDD/DATA/FREED/DATA/mdd.part2.RData",compress = TRUE)
 ```

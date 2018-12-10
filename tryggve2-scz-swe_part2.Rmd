@@ -68,10 +68,13 @@ analysis
 
 ### Step 0: Load R packages
 ```{r R packages}
-library(dplyr)
+library(tidyverse)
+#library(dplyr)
 library(data.table)
-library(ggplot2)
+#library(ggplot2)
 library(lubridate)
+library(stringr)
+library(skimr)
 
 Sys.setenv(TZ="Europe/Stockholm")
 ```
@@ -80,7 +83,7 @@ Sys.setenv(TZ="Europe/Stockholm")
 REQUIRE EDITING on the file path
 ```{r specify file path}
 # edit the file path where you have stored the part 1 data
-data.f <- "/Users/luyi/CloudStation/WORK_2018/MyProjects_with_Pat/GAPS_MDD/DATA/FREED/DATA/scz.part2.tmp.RData"
+data.f <- "/Users/luyi/CloudStation/WORK_2018/MyProjects_with_Pat/GAPS_MDD/DATA/FREED/DATA/scz.part1.RData"
 
 # load the R data
 load(data.f) 
@@ -111,6 +114,11 @@ scz.perind <- scz.v2 %>%
   filter(nsczcontacts >= 2) %>% # apply the criteria #2
   select(-admit.date:-icd.version, -scz_date) %>%
   ungroup()
+
+rm(scz.v2)
+
+# a quick summary of numeric variables
+scz.perind %>% select_if(is.numeric) %>% skimr::skim()
 
 # make list of scz cases and date of first contact for comparison with psych disorders below
 first.scz.date <- scz.perind %>%
@@ -464,7 +472,7 @@ sib <- left_join(tmp, parent, by=c("dad.id", "mom.id")) %>%
 
 ```
 
-```{r mother's SCZ status}
+```{r mother SCZ status}
 # link mother's ID with SCZ list
 mother.scz <- inner_join(mother, first.scz.date, by = c("mom.id" = "id")) %>%  
   select(-dob) %>%
@@ -486,7 +494,7 @@ mother.scz <- mother.scz %>%
   select(mom.scz, mom.id, id)
 ```
 
-```{r father's SCZ status}
+```{r father SCZ status}
 # link father's ID with SCZ list
 father.scz <- inner_join(father, first.scz.date, by = c("dad.id" = "id")) %>%
   select(-dob) %>%
@@ -508,7 +516,7 @@ father.scz <- father.scz %>%
   select(dad.scz, dad.id, id)
 ```
 
-```{r kid's SCZ status}
+```{r kid SCZ status}
 # link kid's ID with SCZ list
 kids.scz <- inner_join(kid, first.scz.date, by = c("kid.id" = "id")) %>%
   select(-dob) %>%
@@ -530,7 +538,7 @@ kids.scz <- kids.scz %>%
   select(kid.scz, kid.id, id)
 ```
 
-```{r full sib's SCZ status}
+```{r full sib SCZ status}
 sibs.scz <- scz.parent %>% 
   filter(!is.na(dad.id) & !is.na(mom.id)) %>% # take only relationships with mom and dad ids available
   add_count(dad.id, mom.id) %>% # group by both parent's ids
@@ -570,7 +578,7 @@ fhx <- full_join(fhx, sibs.scz,by="id")
 # add variable that indicates family history yes or no
 scz.fhx <- fhx %>%
   # if any of the 4 relatives has SCZ (before index person), then fhx = 1
-  # *WRONG*: if none of the 4 relatives has SCZ (before index person), then fhx = 0   # *CORRECT*:if any of the 4 relatives has no SCZ (Note: after the first condion was applied, this basically grabs those status of 0s or NAs), then fhx = 0
+  # *WRONG*: if none of the 4 relatives has SCZ (before index person), then fhx = 0   # *CORRECT*:if any of the 4 relatives has no SCZ (Note: after the first condition was applied, this basically grabs those status of 0s or NAs), then fhx = 0
   # otherwise NAs
   mutate(fhx.scz = case_when(mom.scz==1 | dad.scz==1 | kid.scz==1 | sibs.scz==1 ~ 1,
                          mom.scz==0 | dad.scz==0 | kid.scz==0 | sibs.scz==0 ~ 0,
@@ -692,10 +700,10 @@ rm(grades.1, grades.2, grades.std)
 
 ```
 
-
 ```{r educational attainement}
 # Background: specific coding for education level in Sweden: www.scb.se/statistik/UF/UF0506/SUN2000English%20version.doc
 # The first digit gives a broad indication of the level of education and corresponds to ‘level’ in ISCED 97. 
+# first digit in ISCED 97                                       conversion to EduYear (see below for details)
 # 6	Postgraduate education                                      -> EduYear = 22
 # 5	Post-secondary education, two years or longer               -> EduYear = 19
 # 4	Post-secondary education, less than two years               -> EduYear = 15
@@ -715,40 +723,225 @@ education %>% count(edlevel)
 
 # Need to: 
 # 1) set 999 as missing
-# 2) take the first digit in the 'edlevel' variable, and recategorize
+# 2) take the first digit in the 'edlevel' variable, and recategorize according to the conversion above
+# 3) standardise the converted EduYear by birth year and sex
+
+# need birth year and sex from population register
+pop <- fread(pop.f, sep="\t") %>%
+  as_tibble() %>%
+  rename("id"="LOPNR","sex"="KON", # 1 = male, 2 = female
+         "birth.country"="FODELSEGRUPP", # country of birth
+         "birth.county"="FODELSELAN", # county of birth in each country
+         "dob"="FODELSEDATUM") %>%
+  select(-birth.county) %>% # drop birth county
+  mutate(swe.born = case_when(birth.country == 0 ~ 1,birth.country != 0 ~ 0)) %>% # add an indicator of Sweden born (1=SWE, 0=non-SWE, NAs=unknown)
+  mutate(dob = paste(as.character(dob),"15",sep=""))  # add 15th as day of the month
 
 
-# recategorise
-# need birth year and sex from v_indivi
-education <- left_join(education,pop, by="id")
+education <- left_join(education, pop, by="id")
+
+# recategoris
 education <- education %>%
-  mutate(edlevel = case_when(str_detect(edlevel,"^1") ~ "6",
-                             str_detect(edlevel,"^2") ~ "9",
-                             str_detect(edlevel,"^3") ~ "11",
-                             str_detect(edlevel,"^4") ~ "12",
-                             str_detect(edlevel,"^5") ~ "14",
-                             str_detect(edlevel,"^6|^7") ~ "16",
-                                   TRUE ~ NA_character_))
-education <- education %>%
-  filter(!is.na(edlevel) & !is.na(dob))
-### Standardize ed-level by birth year and sex
-education <- education %>%
-  mutate(birth.yr = substr(dob, 1, 4))
-education$edlevel <- as.numeric(education$edlevel)
-education$birth.yr <- as.numeric(education$birth.yr)
-education$sex <- as.numeric(education$sex)
-education$z_edlevel <- rstandard(lm(education$edlevel ~ education$birth.yr + education$sex))
-education <- education %>%
-  select(id, z_edlevel)
-# group with study pop
-scz <- left_join(scz, education, by = "id")
-rm(education)
+  mutate(edlevel = as.integer(substr(edlevel, 1, 1))) %>% # correspond to #2 above, take the first digits in 'edlevel'
+  mutate(EduYear = case_when(edlevel == 1 ~ 7,  # correspond to #2 above, recategorize
+                             edlevel == 2 ~ 10,
+                             edlevel == 3 ~ 13,
+                             edlevel == 4 ~ 15,
+                             edlevel == 5 ~ 19,
+                             edlevel == 6 ~ 22,
+                             edlevel == 9 ~ NA_real_, # correspond to #1, set 9 code as missing
+                             TRUE ~ NA_real_)) %>% # all other coding (if any) will be set as missing
+  filter(!is.na(EduYear) & !is.na(dob) & !is.na(sex)) %>%  # select only those with non-missing values in EduYear & in population register (b/c cannot apply #3 on missing data)
+  filter(swe.born == 1) %>% # also select only those born in SWE
+  mutate(birth.yr = substr(dob, 1, 4)) # extract the birth year
+  
+# before applying #3, check summary statistics of mean EduYears stratified by birthyr and sex (and swe.born)
+edu.sum <- education %>% 
+  group_by(birth.yr, sex) %>% 
+  summarise(N=n(), EduYear.mean = mean(EduYear),EduYear.sd = sd(EduYear))
+
+# quick plotting
+# Note: do not plot beyond 1980, as many born after 1980 have not completed all education yet (mean EduYear starts to dip after this year)
+ggplot(data=edu.sum, aes(x=as.integer(birth.yr), y= EduYear.mean, group = sex)) +
+  geom_line(aes(color=as.factor(sex))) +
+  geom_point(aes(color=as.factor(sex))) +
+  labs(title = "Trend of mean EduYears by birth cohort (whole SWE population, stratified by sex)",
+    x="Birth Year", y="Mean EduYear") +
+  scale_x_continuous(limits = c(1911, 1980)) + 
+  scale_colour_manual("Sex", labels = c("male","female"), values = 1:2)  
+# clear trend, thus apply standardisation
+
+### Corresponds to #3, standardize EduYear by birth year and sex
+education.std <-  education.2  %>%
+  group_by(birth.yr, sex) %>% 
+  mutate(EduYr.std_byr_sex = scale(EduYear)) %>% 
+  ungroup() %>% 
+  filter(!is.na(EduYr.std_byr_sex)) %>% # standardisation further generated some NAs? <- filter for now
+  select(id, EduYr.std_byr_sex) 
+
+# can check whether standardisation is properly done using the following: 
+education.std %>% 
+  group_by(birth.yr, sex) %>% 
+  summarise(mean(EduYr.std_byr_sex), sd(EduYr.std_byr_sex))
+
 ```
 
+```{r merge edu year with SCZ ind}
+# finally, merge with the main database of SCZ patients
+scz.perind <- left_join(scz.perind, education.std, by = "id")
+
+# cleaning up
+# remove unwanted data frames
+rm(education.std)
+
+```
+
+### Step 7: Exposure - Family of origin
++ parental ages at birth
++ parental SES-education-occupation-income
++ birth order
++ family composition (number of parents/partners, parental criminality-incarceration, divorce, siblings, out-of-home placement)
+```{r parental age at birth}
+
+# need pre-defined dataset: scz.parent, which incl. variables of id, dob, dad.id, mom.id 
+# (here does not need scz.kid)
+
+# paternal age at child birth: 
+parent.age <- left_join(scz.parent, pop, by=c( "dad.id" = "id")) %>% # merge with population register to get dob for the dad
+  select(-first_scz_date, -scz, -sex, -birth.country, -swe.born) %>% # drop unwanted
+  rename(index.dob = dob.x) %>% # index person's dob
+  mutate(dad.dob = ymd(dob.y), dob.y=NULL) %>% # father's dob
+  mutate(paternal_age = as.integer((index.dob - dad.dob)/365.25)) # calculate father's age
+  
+# maternal age at child birth: 
+parent.age <- left_join(parent.age, pop, by=c( "mom.id" = "id")) %>% # merge with population register to get dob for the mom
+  select(-sex, -birth.country, -swe.born) %>% 
+  mutate(mom.dob = ymd(dob), dob=NULL) %>% # mother's dob
+  mutate(maternal_age = as.integer((index.dob - mom.dob)/365.25)) # calculate mother's age
+  
+# check summary statistics of mean maternal/paternal age stratified by birthyr 
+parentage.sum <- parent.age %>% 
+  mutate(birth.yr = substr(index.dob, 1, 4)) %>% # grab birth year
+  group_by(birth.yr) %>% 
+  summarise(
+    N=n(), 
+    paternal_age.mean = mean(paternal_age, na.rm=T),
+    maternal_age.mean = mean(maternal_age, na.rm=T))
+
+# reformat 
+parentage.sum.2 <- parentage.sum %>%
+  gather(key, mean , -birth.yr, -N) %>% 
+  separate(key, c("parent", "tmp"), "\\.") %>% 
+  select(-tmp)
+
+# quick plotting
+ggplot(data=parentage.sum.2, aes(x=as.integer(birth.yr), y= mean, group = parent)) +
+  geom_line(aes(color=as.factor(parent))) +
+  geom_point(aes(color=as.factor(parent))) +
+  labs(title = "Parental age at child birth (SCZ/SAD patients as index)",
+       x="Birth Year", y="Mean parental age at child birth") +
+  scale_x_continuous(limits = c(1932, 1990)) +
+  scale_y_continuous(limits = c(20, 35)) +
+  theme(legend.title=element_blank()) 
+# looks like parental age is fairly stable over the birth years. 
+# no need to standardise by birth year. 
 
 
+```
+
+```{r merge parental age with SCZ ind}
+# finally, merge with the main database of SCZ patients
+scz.perind <- 
+  left_join(scz.perind, parent.age, by = "id") %>% 
+  select(-index.dob, -dad.id, -mom.id, -dad.dob, -mom.dob)
+
+# cleaning up
+# remove unwanted data frames
+rm(parentage.sum, parentage.sum.2)
+
+```
+
+```{r parental SES - TO DO}
+# parental SES-education-occupation-income
+
+```
+
+```{r parental education - TO DO}
+# parent education - linking from above education register + multigen reg
+
+```
+
+```{r birth order - TO DO}
+
+```
+
+```{r family composition - TO DO}
+# family composition (number of parents/partners, divorce, siblings, out-of-home placement)
+# multigeneration register for number of parents, kids
+
+```
+
+### Step 8: Exposure - Childhood trauma
++ parental death: cause of death + multigen that occurs <= 15 year (to be consistent with previous definition of psych comorbidity during childhood)
++ severe medical illness = "severe" would be? age < 18 year?  
+```{r Childhood trauma}
+
+# need pre-defined dataset: scz.parent, which incl. variables of id, dob, dad.id, mom.id 
+
+# need to read in CauseDeath register again
+death <- fread(death.f, sep="\t") %>%
+  as_tibble() %>%
+  rename("id"="LOPNR","dod"="X_DODSDATUM")
+
+
+# index person's age at father's death: 
+parent.death <- left_join(scz.parent, death, by=c( "dad.id" = "id")) %>% # merge with cause of death register to get dod for the dad
+  select(-first_scz_date, -scz) %>% # drop unwanted
+  rename(index.dob = dob) %>% # index person's date of birth
+  mutate(dad.dod = ymd(dod), dod=NULL) %>% # father's date of death
+  mutate(age_fatherdied = as.integer((dad.dod -index.dob )/365.25), # calculate index person's age when father died
+         fatherdied.childhood = ifelse(age_fatherdied <= 15, 1, 0)) # decide whether father died at index's childhood, bf 15 yo 
+
+# index person's age at mother's death: 
+parent.death <- left_join(parent.death, death, by=c( "mom.id" = "id")) %>% # merge with cause of death register to get dod for the mom
+  mutate(mom.dod = ymd(dod), dod=NULL) %>% # mother's date of death
+  mutate(age_motherdied = as.integer((mom.dod -index.dob )/365.25), # calculate index person's age when mother died
+         motherdied.childhood = ifelse(age_motherdied <= 15, 1, 0)) # decide whether mother died at index's childhood, bf 15 yo 
+
+# define parental bereavement as childhood trauma
+parent.death %<>% 
+  # if either parent died before index person was 15 years old, then parental.breavement = 1
+  # if neither of the parents died before index was 15, then parental.breavement = 0   # ???*CORRECT*:if any of the 4 relatives has no SCZ (Note: after the first condition was applied, this basically grabs those status of 0s or NAs), then fhx = 0
+  # otherwise NAs
+  mutate(parental.breavement = case_when(motherdied.childhood==1 | fatherdied.childhood==1 ~ 1,
+                         motherdied.childhood==0 & fatherdied.childhood==0 ~ 0,
+                         TRUE ~ NA_real_)) %>% 
+  select(id, parental.breavement)
+
+# need to check the cross-table
+table(parent.death$parental.breavement, exclude=NULL)
+
+```
+
+```{r merge parental bereavement with SCZ ind}
+# finally, merge with the main database of SCZ patients
+scz.perind <- 
+  left_join(scz.perind, parent.death, by = "id")
+
+# cleaning up
+# remove unwanted data frames
+rm(parent.death)
+
+```
+  
+### Check missing data in all exposures
+```{r missingness}
+# check missing data on each variable
+scz.perind %>% purrr::map_df(~ sum(is.na(.))) %>% gather(variable, N_missing)
+
+```
 
 ### SAVE ALL THE DATA 
 ```{r save data}
-save.image(file = "/Users/luyi/CloudStation/WORK_2018/MyProjects_with_Pat/GAPS_MDD/DATA/FREED/DATA/scz.part2.tmp.RData",compress = TRUE)
+save.image(file = "/Users/luyi/CloudStation/WORK_2018/MyProjects_with_Pat/GAPS_MDD/DATA/FREED/DATA/scz.part2.RData",compress = TRUE)
 ```
