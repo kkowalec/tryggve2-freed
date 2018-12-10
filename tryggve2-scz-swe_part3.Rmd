@@ -1,5 +1,5 @@
 ---
-title: "Tryggve2 - Schizophrenia - Sweden - "
+title: "Tryggve2 - Schizophrenia - Sweden - Part III"
 author: "Kaarina Kowalec, kaarina.kowalec@ki.se"
 date: "November 2018"
 output: 
@@ -322,6 +322,7 @@ scz$dob <- sapply(scz$dob, paste0, "15")
 scz <- scz %>%
   mutate(dob = ymd(dob))
 
+rm(pop) # remove pop register
 
 ###############################
 # Death #######################
@@ -1774,7 +1775,7 @@ sui <- hdr %>%
    filter((icd.version==8 & grepl("^E950|^E951|^E952$|^E9520|^E9521|^E9529|^E953|^E954|^E955|^E956|^E957|^E958|^E959", diagnosis))
       | (icd.version==9 & grepl("^E95A|^E95B|^E95C|^E95D|^E95E|^E95F|^E95G|^E95H|^E95W|^E95X", diagnosis))
       | (icd.version==10 & grepl("^X60|^X61|^X62|^X63|^X64|^X65|^X66|^X67|^X68|^X69|^X70|^X71|^X72|^X73|^X74|^X75|^X76|^X77|^X78|^X79|^X80|^X81|
-                               X82|^X83|^X84", diagnosis)) ) %>%
+                               X82|^X83|^X84", diagnosis))) %>%
   mutate(sui = 1,
          admit.date = ymd(as.character(admit.date))) %>%
   arrange(id, admit.date) %>%
@@ -1891,9 +1892,8 @@ scz.hdr <- fread("/Volumes/Common/projects/S3/S3_Research/tryggve2/tryggve_psych
          inpatient=SOURCE, # inpatient (1) or outpatient (2)
          icd.version=ICD, # icd version - 8, 9 or 10
          diagnosis=DIA,# ICD diagnostic code
-         #id.admit.num=X_PID, # per individual ID per admission
+         admit.num=X_PID, # per individual ID per admission
          dx.code.num=X_DID) %>% # primary vs. other ICD dx codes, i.e. H01 = primary, all others = secondary
-         #care.code=MVO) %>%  # MVO of 9 = psych care, all others will not be used
   mutate(inpatient = ifelse(inpatient == 2, 0, 1)) #recode such that inpatient == 1 and outpatient == 0
 
 
@@ -2222,7 +2222,7 @@ rm(grades,grades88to97,grades98toCurrent,grades.2)
 ############################# 
 ######## Education ##########
 ############################# 
-# standardize by birth year? do later
+# standardize by birth year and sex
 # specific coding for education level in Sweden: www.scb.se/statistik/UF/UF0506/SUN2000English%20version.doc
 
 # The first digit gives a broad indication of the level of education and corresponds to ‘level’ in ISCED 97. 
@@ -2235,11 +2235,12 @@ rm(grades,grades88to97,grades98toCurrent,grades.2)
 # (0	Pre-primary education)
 # 999 empty/missing
 
-# need birth year and sex from population reg
-education <- inner_join(education,pop, by="id")
+# recategorise
+# need birth year and sex from v_indivi
+education <- left_join(education,pop, by="id")
 
 education <- education %>%
-  mutate(edyrs = case_when(str_detect(edlevel,"^1") ~ "6",
+  mutate(edlevel = case_when(str_detect(edlevel,"^1") ~ "6",
                              str_detect(edlevel,"^2") ~ "9",
                              str_detect(edlevel,"^3") ~ "11",
                              str_detect(edlevel,"^4") ~ "12",
@@ -2248,29 +2249,27 @@ education <- education %>%
                                    TRUE ~ NA_character_))
 
 education <- education %>%
-  select(id,edyrs,sex,dob)
-
-
-education <- education %>%
-  filter(!is.na(edyrs))
+  filter(!is.na(edlevel) & !is.na(dob))
 
 ### Standardize ed-level by birth year and sex
 
 education <- education %>%
   mutate(birth.yr = substr(dob, 1, 4))
 
-education$edyrs <- as.numeric(education$edyrs)
+education$edlevel <- as.numeric(education$edlevel)
 education$birth.yr <- as.numeric(education$birth.yr)
 education$sex <- as.numeric(education$sex)
 
-education$z_edyrs <- rstandard(lm(education$edyrs ~ education$birth.yr + education$sex))
+education$z_edlevel <- rstandard(lm(education$edlevel ~ education$birth.yr + education$sex))
 
 education <- education %>%
-  select(id, z_edyrs)
+  select(id, z_edlevel)
 
-scz <- left_join(scz,education)
+# group with study pop
+scz <- left_join(scz, education, by = "id")
 
 rm(education)
+
 
 ```
 
@@ -2310,20 +2309,310 @@ paternal.age <-
 
 
 
-### Step 11: Outcomes
+### Step X: Outcome 1 & 2: Suicide - attempts or completed
+Suicide attempt must have occurred after the first SCZ date and only need first one (for now)
+```{r}
+# attempts from hospital discharge register
 
-need dates for all of these:
-+ the number of psychiatric hospitalizations and outpatient contacts - have from hospital discharge register
-+ the number of somatic healthcare utilization - have from hospital discharge register:
-  + somatic defintion?
-+ indication of 2nd or 3rd line treatments (pharmacological augmentation, ECT, TMS, DBS, clozapine) - drug reg for clozapine not sure about ECT/TMS/DBS
-+ suicide completed (death reg) or suicide attempt (HDR)
+#################################
+# Suicides attempts #############
+#################################
+
+sui.a <- scz.hdr %>%
+   filter((icd.version==8 & grepl("^E950|^E951|^E952$|^E9520|^E9521|^E9529|^E953|^E954|^E955|^E956|^E957|^E958|^E959", diagnosis))
+      | (icd.version==9 & grepl("^E95A|^E95B|^E95C|^E95D|^E95E|^E95F|^E95G|^E95H|^E95W|^E95X", diagnosis))
+      | (icd.version==10 & grepl("^X60|^X61|^X62|^X63|^X64|^X65|^X66|^X67|^X68|^X69|^X70|^X71|^X72|^X73|^X74|^X75|^X76|^X77|^X78|^X79|^X80|^X81|
+                               X82|^X83|^X84", diagnosis)) ) %>%
+  mutate(sui = 1,
+         admit.date = ymd(as.character(admit.date))) %>%
+  arrange(id, admit.date)
+
+sui.a <- inner_join(first.scz.date,sui.a) # inner join together with scz cases to get date of first.scz.admit
+
+sui.a <- sui.a %>%
+  filter(admit.date > first_scz_date) %>% # remove sui admission before scz contact   
+  arrange(id, admit.date) %>%
+  group_by(id) %>%
+  mutate(date.outcome1 = first(admit.date),
+         outcome1 = 1) %>%
+  slice(1) %>%
+  select(id, date.outcome1, outcome1)
+
+#################################
+# Suicides completed ############
+#################################
+
+# completes from death register - need to go back and get this from COD - get entire COD for SCZ (or MDD)
+
+scz.cod <- fread("/Volumes/Common/projects/S3/S3_Research/tryggve2/tryggve_psych_v_cod_scz.tsv", sep="\t") %>%
+  as_tibble() %>%
+  rename(id=LOPNR,
+         dod=X_DODSDAT,
+         icd.version=ICD_NR,
+         death.cause=CAUSE,
+         death.cause.nr=CAUSENR)
+
+sui.c <- scz.cod %>%
+   filter((icd.version==8 & grepl("^E950|^E951|^E952$|^E9520|^E9521|^E9529|^E953|^E954|^E955|^E956|^E957|^E958|^E959", death.cause))
+      | (icd.version==9 & grepl("^E95A|^E95B|^E95C|^E95D|^E95E|^E95F|^E95G|^E95H|^E95W|^E95X", death.cause))
+      | (icd.version==10 & grepl("^X60|^X61|^X62|^X63|^X64|^X65|^X66|^X67|^X68|^X69|^X70|^X71|^X72|^X73|^X74|^X75|^X76|^X77|^X78|^X79|^X80|^X81|
+                               X82|^X83|^X84", death.cause)) ) %>%
+  mutate(sui.d = 1,
+         death.date = ymd(as.character(dod))) %>%
+  arrange(id, death.date)
+
+sui.c <- inner_join(first.scz.date,sui.c) # inner join together with scz cases to get date of first.scz.admit
+
+sui.c <- sui.c %>%
+  filter(death.date > first_scz_date) %>% # remove sui death before scz contact **i know, theoretically, impossible
+  arrange(id, death.date) %>%
+  group_by(id) %>%
+  mutate(date.outcome2 = first(death.date),
+         outcome2 = 1) %>%
+  slice(1) %>%
+  select(id, date.outcome2, outcome2)
+
+# merge outcome 1 and 2 with original SCZ dataframe
+
+scz <- left_join(scz, sui.a)
+scz <- left_join(scz, sui.c)
+
+rm(sui.a, sui.c)
+```
+
+
+### Step X: Outcome 3: Premature mortality
++ Mortality which occurs by age 56 years or earlier (any causes) (premature death=56 years as defined by Fazel, Lichtenstein, et al, Lancet Psychiatry 2014)
++ Could also take life expectancy in Sweden for both males and females in 2016 (82.2 years), less 25 years (expected number of years less for someone w SCZ) = 82-25 = 57 years
+```{r}
+premature <- scz.cod %>%
+  arrange(id, dod) %>%
+  mutate(death.date = ymd(as.character(dod))) %>%
+  group_by(id) %>%
+  slice(1) %>%
+  select(id,death.date)
+
+premature <- inner_join(first.scz.date,premature) # inner join together with scz cases to get date of first.scz.admit
+
+premature <- premature %>%
+  filter(death.date > first_scz_date) %>% # remove deaths before scz contact **i know, theoretically, impossible
+  arrange(id, death.date) %>%
+  group_by(id) %>%
+  filter(as.numeric((death.date - dob)/365.25) <= 56) %>%
+  mutate(date.outcome3 = first(death.date),
+        outcome3 = 1) %>%
+  slice(1) %>%
+  select(id, date.outcome3, outcome3)
+
+# merge outcome 3 with original SCZ dataframe 
+
+scz <- left_join(scz, premature)
+rm(premature)
+```
+
+### Step X: Outcome 4: Hospitalisations for SCZ
 
 ```{r}
-# after the first-Scz-date (month/year)-use 15 as 
+scz.hdr.ex <- fread("/Volumes/Common/projects/S3/S3_Research/tryggve2/tryggve_psych_v_hdr_ex_scz.tsv", sep="\t") %>%
+  select(-PSVARD) %>%
+  as_tibble() %>%
+  rename(admit.num=X_PID,
+         id=LOPNR,
+         admit.date=DATUM,
+         ward.code=MVO,
+         inpatient=SOURCE,
+         admit.days=VTID,
+         #"psych.care"="PSVARD", # quotations bc character variable
+         icd.version=ICD) %>%
+  mutate(inpatient = ifelse(inpatient == 2, 0, 1), #recode such that inpatient == 1 and outpatient == 0
+         admit.date = ymd(as.character(admit.date))) %>%
+  filter(grepl("^9", ward.code)) 
+
+# leave this for now 
+# info for psych.care variable
+# A	Voluntary (1982: 763)
+# B	Voluntary inpatient, ongoing compulsory outpatient (1991: 1128)
+# C	Voluntary inpatient, ongoing forensic outpatient (1991: 1129)
+# D	Compulsory inpatient (1991: 1128)
+# E	Forensic inpatient, with special discharge trial (1991:1129)
+# F	Forensic inpatient, without special discharge trial (1991:1129)
+# G	Forensic inpatient, other (1991:1129)
+# H Compulsory outpatient (1991: 1128)
+# I	Forensic outpatient, with special discharge trial (1991:1129)
+# J	Forensic outpatient, without special discharge trial (1991:1129)
+# K	Retention
+
+# only want to look at SCZ specific admissions but want time in hospital
+scz.hdr <- scz.hdr %>%
+  filter((icd.version != 10 & substr(diagnosis,1,3) == "295") |
+          (icd.version == 10 & substr(diagnosis,1,3) == "F20") |
+           (icd.version == 10 & substr(diagnosis,1,3) == "F25")) %>%
+  filter(inpatient==1) %>%
+  arrange(admit.num, id)
+
+scz.hdr.ex <- scz.hdr.ex %>%
+  select(id,admit.num,ward.code,admit.days) %>%
+  arrange(admit.num, id)
+
+scz.hdr <- left_join(scz.hdr, scz.hdr.ex)
+
+scz.hdr <- scz.hdr %>%
+  filter(!is.na(ward.code))
+
+scz.hdr <- inner_join(first.scz.date,scz.hdr) # inner join together with scz cases to get date of first.scz.admit
+
+scz.hdr <- scz.hdr %>%
+  mutate(admit.days_tiles = ntile(admit.days, 10))
+
+#median value in highest decile is 602 days
+#how many ppl fit this criteria? there are about 6500 people in each decile
+# how about defining as first instance that someone has admission for 100 days
+
+outcome4 <- scz.hdr %>%
+  mutate(admit.date = ymd(as.character(admit.date))) %>%
+  filter(admit.date > first_scz_date) %>% # remove hospitalisations before first scz contact or equal to first contact
+  filter(admit.days > 100) %>% # keep any hospitalisations > 100 days
+  arrange(id, admit.date) %>%
+  group_by(id) %>%
+  mutate(date.outcome4 = first(admit.date),
+         outcome4 = 1) %>%
+  slice(1) %>%
+  select(id, date.outcome4, outcome4)
+
+
+scz <- left_join(scz, outcome4)
+rm(outcome4)
+
+```
+### Step X: Outcome 5: Treatment resistance - Clozapine only
+```{r}
+# combine yearly drug data
+y05 <- fread("/Volumes/Common/projects/S3/S3_Research/tryggve2/drug/tryggve_psych_cloz_y05.tsv", sep="\t") %>%
+  as_tibble() 
+y06 <- fread("/Volumes/Common/projects/S3/S3_Research/tryggve2/drug/tryggve_psych_cloz_y06.tsv", sep="\t") %>%
+  as_tibble() 
+y07 <- fread("/Volumes/Common/projects/S3/S3_Research/tryggve2/drug/tryggve_psych_cloz_y07.tsv", sep="\t") %>%
+  as_tibble() 
+y08 <- fread("/Volumes/Common/projects/S3/S3_Research/tryggve2/drug/tryggve_psych_cloz_y08.tsv", sep="\t") %>%
+  as_tibble() 
+y09 <- fread("/Volumes/Common/projects/S3/S3_Research/tryggve2/drug/tryggve_psych_cloz_y09.tsv", sep="\t") %>%
+  as_tibble() 
+y10 <- fread("/Volumes/Common/projects/S3/S3_Research/tryggve2/drug/tryggve_psych_cloz_y10.tsv", sep="\t") %>%
+  as_tibble() 
+y11 <- fread("/Volumes/Common/projects/S3/S3_Research/tryggve2/drug/tryggve_psych_cloz_y11.tsv", sep="\t") %>%
+  as_tibble() 
+y12 <- fread("/Volumes/Common/projects/S3/S3_Research/tryggve2/drug/tryggve_psych_cloz_y12.tsv", sep="\t") %>%
+  as_tibble() 
+y13 <- fread("/Volumes/Common/projects/S3/S3_Research/tryggve2/drug/tryggve_psych_cloz_y13.tsv", sep="\t") %>%
+  as_tibble() 
+y14 <- fread("/Volumes/Common/projects/S3/S3_Research/tryggve2/drug/tryggve_psych_cloz_y14.tsv", sep="\t") %>%
+  as_tibble() 
+
+outcome5 <- rbind(y05,y06,y07,y08,y09,y10,y11,y12,y13,y14)
+rm(y05,y06,y07,y08,y09,y10,y11,y12,y13,y14)
+
+outcome5 <- outcome5 %>%
+  rename(id=LOPNR,
+         atc=ATC,
+         date.redeem=EDATUM) %>%
+  mutate(date.redeem = ymd(as.character(date.redeem)))
+
+xoutcome5 <- inner_join(first.scz.date,outcome5) # inner join together with scz cases to get date of first.scz.admit
+
+# remove anyone w clozapine prescription b4 1st scz contact or at first contact
+xoutcome5 <- xoutcome5 %>% 
+  arrange(id, date.redeem) %>%
+  mutate(cloz.b4.scz = ifelse(date.redeem <= first_scz_date, 1, 0)) %>% 
+  arrange(desc(cloz.b4.scz)) %>% 
+  group_by(id) %>%
+  slice(1) %>%
+  filter(cloz.b4.scz == 0) %>%
+  select(id) #select only ID because these are people who did not receive any CLOZ before SCZ dx
+
+xoutcome5 <- inner_join(xoutcome5,outcome5) # to get back the individual prescription level
+xoutcome5 <- inner_join(first.scz.date,xoutcome5) # inner join together with scz cases to get date of first.scz.admit
+
+outcome5 <- xoutcome5 %>%
+  arrange(id, date.redeem) %>%
+  mutate(date.outcome5 = first(date.redeem),
+         outcome5 = 1) %>%
+  group_by(id) %>%
+  slice(1) %>%
+  select(id, date.outcome5, outcome5)
+
+rm(xoutcome5)
+
+scz <- left_join(scz, outcome5)
 
 ```
 
+
+### Step X: Outcome 6: Hospitalisation for somatic disease
+Do only cardiovascular disease for now.
+```{r}
+
+# Cardiovascular disease 
+#for icd 8 and 9: https://dimdi.de/static/de/klassi/icd-10-who/historie/icd-vorgaenger/icd-8/ICD-8-Systematik.htm
+#for icd 10: use Death register publication by Brooke et al 2017 (J. Ludvigsson is co-author)
+cvd <- scz.hdr %>%
+   filter((icd.version==8 & grepl("^390|^391|^392|^393|^394|^395|^396|^397|^398|^400|^401|^402|^403|^404|^410|^411|^412|^413|^414|^42|^440|^441|
+                                  ^442|^443|^444|^445|^446|^447|^448|^450|^451|^452|^453|^454|^455|^456|^457|^458", diagnosis))
+      | (icd.version==9 & grepl("^390|^391|^392|^393|^394|^395|^396|^397|^398|^401|^402|^403|^404|^405|^410|^411|^412|^413|^414|^415|^416|^417|
+                                ^418|^419|^42|^44|^451|^452|^453|^454|^455|^456|^457|^458|^459", diagnosis))
+      | (icd.version==10 & grepl("^I0|^I1|^I2|^I3|^I4|^I5|^I7|^I8|^I9", diagnosis))) %>%
+  mutate(cvd = 1,
+         cvd.admit.date = ymd(as.character(admit.date))) 
+
+cvd <- inner_join(first.scz.date,cvd) # inner join together with scz cases
+
+outcome6 <- cvd %>%
+  filter(cvd.admit.date > first_scz_date) %>% # remove hospitalisations before first scz contact or equal to first contact
+  arrange(id, cvd.admit.date) %>%
+  group_by(id) %>%
+  mutate(date.outcome6 = first(cvd.admit.date),
+         outcome6 = 1) %>%
+  slice(1) %>%
+  select(id, date.outcome6, outcome6)
+
+scz <- left_join(scz, outcome6)
+rm(outcome6)
+
+```
+### Step X: Outcome 7: Disability
+1.9 Income and civil status: from LISA register
++ Required Variables:
+  + unique ID - rename as "id"  
+  + civil - rename as "civil.status"
+  + DISPINKPERSF - rename as "income"
+
+Use below, as per C. Dalman BMJ 2016 paper on risk of SCZ in Sweden refugees:
+* DISPINKPERSF/Disposable income. Individual, estimated from the total family value, 100 SEK (1990-2004)
+* DISPINKPERSF04/Disposable income. Individual, estimated from the total family value, 100 SEK (2004-2013)
+```{r read in income and civil levels}
+civil.1990 <- fread("",sep="\t") %>%
+  as_tibble() %>%
+  rename("id"="LOPNR",
+         "year"="AR",
+         "civil.status"="CIVIL",
+         "income"="DISPINKPERSF") %>%
+  mutate(civil.status == case_when(civil.status == 1 ~ "Unmarried",
+                                   civil.status == 2 ~ "Married man",
+                                   civil.status == 3 ~ "Married woman, not cohabiting",
+                                   civil.status == 4 | civil.status == "RP" ~ "Divorced",
+                                   civil.status == 5 ~ "Widow/Widower",
+                                   civil.status == 7 ~ "Married woman, cohabiting",
+                                   civil.status == 8 ~ "Child, <18 years",
+                                   civil.status == 9 ~ "Fosterchild, <18 years",
+                                   civil.status == "EP" ~ "Surviving partner",
+                                   civil.status == "G" ~ "Married",
+                                   civil.status == "OG" ~ "Registered partner",
+                                   civil.status == "SP" ~ "Divorced partner",
+                                   civil.status == "─" ~ "Widow/Widower",
+                                   TRUE ~ NA))
+
+
+
+```
 
 ### Step : Cohort selection and observation period
 ```{r}
