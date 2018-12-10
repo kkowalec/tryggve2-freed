@@ -1,5 +1,5 @@
 ---
-title: "Tryggve2 - Major depressive disorder - Sweden - "
+title: "Tryggve2 - Major depressive disorder - Sweden (part 1) "
 author: "Lu Yi, lu.yi@ki.se"
 date: "October 2018"
 output: 
@@ -240,7 +240,8 @@ education <- fread(education.f, sep="\t") %>%
 + Required Variables:
   + unique ID - rename as "id"  
   + graduation year - rename as "grad.yr"
-  + ... <- TO FILL IN
+  + Average grade (1988-1997) - rename as "avg.grade.fr88"
+  + Merit rating (1998-, best 16 subjects) - rename as "merit.grade.fr98"
 ```{r read in 9th grade scores} 
 grades <- fread(grades.f, sep="\t") %>%
   as_tibble() %>%
@@ -309,7 +310,7 @@ mdd <- hdr %>%
   mutate(nmddcontacts = n, n=NULL) # n=null removes the original n variable
 ```
 
-2.2 Record dates of first and second SCZ admission
+2.2 Record dates of first and second MDD admission
 ```{r record first/second dx dates}
 mdd <- mdd %>%
   arrange(id, mdd_date) %>% # sort by ID, and dx date
