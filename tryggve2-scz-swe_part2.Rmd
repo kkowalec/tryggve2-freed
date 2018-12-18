@@ -56,14 +56,6 @@ Examine variables associated with poor outcomes in schizophrenia, using first, t
 + indication of 2nd or 3rd line treatments (pharmacological augmentation, ECT, TMS, DBS, clozapine) 
 + suicide or suicide attempt
 
-**TO DOs**
-
-cut down this doc into 4 separate RMD (eventually):
-outcome
-exposure/risk factors
-basics
-analysis
-
 ***
 
 ### Step 0: Load R packages
@@ -627,7 +619,246 @@ Note:
 2.9 FHx of Substance use disorder
 2.10 FHx of Suicide
 
-### Step 5: Exposure - Prior medical history - TO DO 
+### Step 5: Exposure - Prior medical history
+We are only selecting those with a date (1) before first treatment contact and (2) before age 15 years (indicating childhood):
++ comorbid somatic disorders: autoimmune, infections, cancer, CVD
++ medication use (wait on this-not sure which drugs to focus on)
+```{r year 9 grade}
+# generate a list of SCZ cases IDs, export this list and import to SAS (or where ever the original register files are) and extract the full hospital discharge register for only those SCZ cases
+
+scz.list <- scz %>%
+  select(id)
+
+scz.hdr <- fread("tryggve_psych_v_hdr_scz.tsv", sep="\t") %>%
+  as_tibble() %>%
+  rename(id=LOPNR,
+         admit.date=DATUM, # date of admission
+         inpatient=SOURCE, # inpatient (1) or outpatient (2)
+         icd.version=ICD, # icd version - 8, 9 or 10
+         diagnosis=DIA,# ICD diagnostic code
+         admit.num=X_PID, # per individual ID per admission
+         dx.code.num=X_DID) %>% # primary vs. other ICD dx codes, i.e. H01 = primary, all others = secondary
+  mutate(inpatient = ifelse(inpatient == 2, 0, 1)) #recode such that inpatient == 1 and outpatient == 0
+
+
+# make list of scz cases and date of first contact for comparison with psych disorders below
+first.scz.date <- scz %>%
+  select(id, first_scz_date, dob)
+
+#########################################
+## Prior personal medical history (somatic disorders)
+#########################################
+
+# Autoimmune diseases from Song et al JAMA 2018 (autoimmune / PTSD overlap; Unnur V. group)
+
+# Diabetes mellitus, insulin dependent icd-8: 250, icd-9: 250, 242A, icd-10: E10
+# Autoimmune thyroid disease ICD8: 242.00, 242.09, 244, 245.03; ICD9: 242A, 242X, 244W, 244X, 245C, 245W; ICD10: E03.5, E03.9, E05.0, E05.5, E05.9, E06.3, E06.5
+# Addison’s disease ICD8: 255.1	ICD9: 255E, ICD10:	E27.1, E27.2
+# Autoimmune polyglandular syndrome	8: 258.10; 9:	258B; 10:	E31.0
+# Reactive arthritis (Reiter’s syndrome)	8: 099.3, 711.1	9: 099D, 711A	10: M02.3, M02.8, M02.9
+# Rheumatoid arthritis	8: 712.00, 712.10, 712,20, 712,39, 712.38	9: 714A-D, 719D; 10: M05, M06, M08.0, M08.1, M08.2, M08.3, M08.4
+# Ankylosing spondylitis	8: 712.4; 9: 720A; 10:	M45
+# Polyarteritis nodosa and related condition (Incl. Kawasaki, Churg-Strauss syndrome, etc.)	8: 446, 9:	446A, 446B, 10:	M30
+# Thrombotic microangiopathy	8: -; 9:	446G	10: M31.1
+# Granulomatosis with polyangiitis (Wegeners’s granulomatosis) 8:	446.20, 9:	446E, 10:	M31.3
+# Microscopic polyangiitis 8/9:none; 10:	M31.7
+# Henoch-Schonlein purpura	8:287.00; 9:	287A, 10:	D69.0
+# Giant cell arteritis/ Polymyalgia rheumatica	8: 446.30,446.31,446.39,717.9	9: 446F, 725	10: M35.3, M31.5, M31.6
+# Systemic lupus erythematosus	8: 734.1; 9:	710A; 10:	M32
+# Polymyositis/dermatomyositis	8: 716.10, 716.00	,9: 710E, 710D; 10: M33.0, M33.1, M33.2, M33.9
+# Systematic sclerosis (scleroderma)	8: 710.0, 734.0; 9:710B; 10:	M34
+# Sjögren’s syndrome	8:734.90,9:	710C, 10:	M35.0
+# Mixed connective tissue disease	8:734.98, 734.91, 734.99;	9: 710X, 710W;	10: M35.1
+# Behcet’s syndrome	8:136.0;9:	136B; 10:	M35.2
+# Pemphigus vulgaris	8: 694.00; 9:	694E; 10:	L10.0
+# Bullous pemphigoid	8:694.05; 9:	694F;	10: L12
+# Dermatitis herpetiformis	8:693.99; 9:	694A; 10:	L13.0
+# Psoriasis	8:696	696A, 9:696B; 10: L40
+# Alopecia areata 8:704.00	; 9:704A; 10:	L64
+# Vitiligo	8:709.05	709A	L80
+# Pernicious anemia	281.0	281A	D51.0
+# Autoimmune hemolytic anemia	283.90, 283.92	283A	D59.0, D59.1
+# Idiopathic thrombocytopenic purpura	287.3	287D	D69.3
+# Acute disseminated encephalomyelitis	-	-	G04
+# Anti-NMDA receptor encephalitis	-	-	G13.1
+# Multiple sclerosis	340	340	G35
+# Neuromyelitis optica and ADEM	341	341A	G36
+# Guillain-Barré syndrome	354.01	357A	G61.0, G61.1, G61.8, G61.9
+# Myasthenia gravis	733.0	358A	G70.0
+# Primary biliary cirrhosis	-	571G	K74.3
+# Crohn’s disease	563.00	555	K50
+# Ulcerative colitis	563.10, 569.02	556	K51
+# Coeliac disease	269.00, 269.98	579A	K90.0
+# Acute rheumatic fever and chorea	390-392	390-392	I00, I01.0, I01.1, I01.2, I01.8, I01.9, I02.0, I02.9
+# Sarcoidosis	135	135	D86
+# IgA nephropathy	580,582	580,582	N00,N01,N03,N05
+
+autoimmune <- scz.hdr %>%
+   filter((icd.version==8 & grepl("^250|^242|^244|^245|^255|^099|^711|^712|^446|^287|^717|^734|^716|^710|
+                                  ^734|^136|^694|^693|^696|^696A|^704|^709|^281|^283|^287|^340|^341|^354|^733
+                                  |^563|^569|^269|^390|^391|^392|^135|^580|^582", diagnosis))
+      | (icd.version==9 & grepl("^250|^242A|^242X|^244W|^244X|^245C|^245W|^255E|^099D|^711A|^714A|^714B|
+                                ^714C|^714D|^720A|^725|^446A|^446B|^446G|^446E|^446F|^287A|^710A|^710B|
+                                ^710E|^710D|^710C|^710X|^710W|^136B|^694E|^694F|^694A|^696B|^704A|709A|^281A|^283A
+                                |^287D|^340|^341A|^357A|^358A|^517G|^555|^556|^579A|^390|^391|^392|^135|^580|^582", diagnosis))
+      | (icd.version==10 & grepl("^E10|^E03|^E05|^E06|^E27|^M02|^M05|^M06|^M08|^M45|^M30|^M31|^M32|^M33|
+                                 ^M34|^M35|^D69|^L10|^L12|^L13|^L40|^L64|^L80|^D51|^D59|^D69|^G04|^G13|^G35|^G36|^G61
+                                 |^G70|^K74|^K50|^K51|^K90|^I00|^I01|^I02|^D86|^N00|^N01|^N03|^N05", diagnosis))) %>%
+  mutate(ai = 1,
+         admit.date = ymd(as.character(admit.date))) %>%
+  arrange(id, admit.date) %>%
+  group_by(id) %>%
+  mutate(first.ai.date = first(admit.date)) %>%
+  slice(1) %>%
+  select(id,ai,first.ai.date)
+
+autoimmune <- inner_join(first.scz.date,autoimmune) # inner join together with scz cases
+
+autoimmune <- autoimmune %>%
+  mutate(age.first.ai = as.numeric((first.ai.date - dob)/365.25),
+         ai.childhood = ifelse(age.first.ai <= 15, 1, 0), # only those with ai dx before age 15 years
+         ai.pre.scz = ifelse(first.ai.date < first_scz_date, 1, 0)  #  only those with ai dx before scz contact
+  ) %>%
+  select(id,ai.childhood,ai.pre.scz)
+
+scz <- left_join(scz, autoimmune)
+rm(autoimmune)
+scz <- scz %>%
+  mutate(ai.childhood=ifelse(is.na(ai.childhood),0,ai.childhood),
+         ai.pre.scz=ifelse(is.na(ai.pre.scz),0,ai.pre.scz))
+         
+# Cardiovascular disease 
+#for icd 8 and 9: https://dimdi.de/static/de/klassi/icd-10-who/historie/icd-vorgaenger/icd-8/ICD-8-Systematik.htm
+#for icd 10: use Death register publication by Brooke et al 2017 (J. Ludvigsson is co-author)
+cvd <- scz.hdr %>%
+   filter((icd.version==8 & grepl("^390|^391|^392|^393|^394|^395|^396|^397|^398|^400|^401|^402|^403|^404|^410|^411|^412|^413|^414|^42|^440|^441|
+                                  ^442|^443|^444|^445|^446|^447|^448|^450|^451|^452|^453|^454|^455|^456|^457|^458", diagnosis))
+      | (icd.version==9 & grepl("^390|^391|^392|^393|^394|^395|^396|^397|^398|^401|^402|^403|^404|^405|^410|^411|^412|^413|^414|^415|^416|^417|
+                                ^418|^419|^42|^44|^451|^452|^453|^454|^455|^456|^457|^458|^459", diagnosis))
+      | (icd.version==10 & grepl("^I0|^I1|^I2|^I3|^I4|^I5|^I7|^I8|^I9", diagnosis))) %>%
+  mutate(cvd = 1,
+         admit.date = ymd(as.character(admit.date))) %>%
+  arrange(id, admit.date) %>%
+  group_by(id) %>%
+  mutate(first.cvd.date = first(admit.date)) %>%
+  slice(1) %>%
+  select(id,cvd,first.cvd.date)
+
+cvd <- inner_join(first.scz.date,cvd) # inner join together with scz cases
+
+cvd <- cvd %>%
+  mutate(age.first.cvd = as.numeric((first.cvd.date - dob)/365.25),
+         cvd.childhood = ifelse(age.first.cvd <= 15, 1, 0), # only those with cvd dx before age 15 years
+         cvd.pre.scz = ifelse(first.cvd.date < first_scz_date, 1, 0)  #  only those with cvd dx before scz contact
+  ) %>%
+  select(id,cvd.childhood,cvd.pre.scz)
+
+scz <- left_join(scz, cvd)
+rm(cvd)
+scz <- scz %>%
+  mutate(cvd.childhood=ifelse(is.na(cvd.childhood),0,cvd.childhood),
+         cvd.pre.scz=ifelse(is.na(cvd.pre.scz),0,cvd.pre.scz))
+
+# Stroke	I60-I69 
+stroke <- scz.hdr %>%
+   filter((icd.version==8 & grepl("^430|^431|^432|^433|^434|^435|^436|^437|^438", diagnosis))
+      | (icd.version==9 & grepl("^430|^431|^432|^433|^434|^435|^436|^437|^438", diagnosis))
+      | (icd.version==10 & grepl("^I6", diagnosis))) %>%
+  mutate(strk = 1,
+         admit.date = ymd(as.character(admit.date))) %>%
+  arrange(id, admit.date) %>%
+  group_by(id) %>%
+  mutate(first.strk.date = first(admit.date)) %>%
+  slice(1) %>%
+  select(id,strk,first.strk.date)
+
+stroke <- inner_join(first.scz.date,stroke) # inner join together with scz cases
+
+stroke <- stroke %>%
+  mutate(age.first.strk = as.numeric((first.strk.date - dob)/365.25),
+         strk.childhood = ifelse(age.first.strk <= 15, 1, 0), # only those with stroke dx before age 15 years
+         strk.pre.scz = ifelse(first.strk.date < first_scz_date, 1, 0)  #  only those with stroke dx before scz contact
+  ) %>%
+  select(id,strk.childhood,strk.pre.scz)
+
+scz <- left_join(scz, stroke)
+rm(stroke)
+scz <- scz %>%
+  mutate(strk.childhood=ifelse(is.na(strk.childhood),0,strk.childhood),
+         strk.pre.scz=ifelse(is.na(strk.pre.scz),0,strk.pre.scz))
+
+# Cancer/(broad codes)	ICD8: 140-163,170-174,180-228,230-239
+# Cancer/(broad codes)	ICD9: 140-165,170-176,179-208,210-239
+# Cancer  ICD10 C00-C97 
+cancer <- scz.hdr %>%
+   filter((icd.version==8 & grepl("^14|^15|^160|^161|^162|^163|^170|^171|^172|^173|^174|^18|^19|
+                                  ^20|^21|^220|^221|^222|^223|^224|^225|^226|^227|^228|^23", diagnosis))
+      | (icd.version==9 & grepl("^14|^15|^160|^161|^162|^163|^164|^165|^170|^171|^172|^173|^174|^175|^176|^179|^18|^19|
+                                  ^200|^201|^202|^203|^204|^205|^206|^207|^208|^21|^22|^230|^231|^232|^233|^234|^235|^236|^237|^238|^239", diagnosis))
+      | (icd.version==10 & grepl("^C0|^C1|^C2|^C3|^C4|^C5|^C6|^C7|^C8|^C9", diagnosis))) %>%
+  mutate(cancer = 1,
+         admit.date = ymd(as.character(admit.date))) %>%
+  arrange(id, admit.date) %>%
+  group_by(id) %>%
+  mutate(first.cancer.date = first(admit.date)) %>%
+  slice(1) %>%
+  select(id,cancer,first.cancer.date)
+
+cancer <- inner_join(first.scz.date,cancer) # inner join together with scz cases
+
+cancer <- cancer %>%
+  mutate(age.first.cancer = as.numeric((first.cancer.date - dob)/365.25),
+         cancer.childhood = ifelse(age.first.cancer <= 15, 1, 0), # only those with cancer dx before age 15 years
+         cancer.pre.scz = ifelse(first.cancer.date < first_scz_date, 1, 0)  #  only those with cancer dx before scz contact
+  ) %>%
+  select(id,cancer.childhood,cancer.pre.scz)
+
+scz <- left_join(scz, cancer)
+rm(cancer)
+scz <- scz %>%
+  mutate(cancer.childhood=ifelse(is.na(cancer.childhood),0,cancer.childhood),
+         cancer.pre.scz=ifelse(is.na(cancer.pre.scz),0,cancer.pre.scz))
+
+# Infections and parasitic conditions	
+# ICD8: 000-027,030-046,050-057,060-068,070-104, 110-117,120-136
+# ICD9: 001-018,020-027,030-042,045-057,060-066,070-088,090-104,110-118,120-139
+# ICD10 A00-B99
+infect <- scz.hdr %>%
+   filter((icd.version==8 & grepl("^00|^01|^020|^021|^022|^023|^024|^025|^026|^027|^03|
+                                  ^040|^041|^042|^043|^044|^045|^046|^050|^051|^052|^053|
+                                  ^054|^055|^056|^057|^060|^061|^062|^063|^064|^065|^066|^067|
+                                  ^068|^07|^08|^09|^100|^101|^102|^103|^104|^110|^111|^112|^113|
+                                  ^114|^115|^116|^117|^12|^130|^131|^132|^133|^134|^135|^136", diagnosis))
+      | (icd.version==9 & grepl("^001|^010|^011|^012|^013|^014|^015|^016|^017|^018|^020|^021|
+                                  ^022|^023|^024|^025|^026|^027|^03|^040|^041|^042|^045|^046|^047|^048|^049|^050|^051|^052|^053|
+                                  ^054|^055|^056|^057|^060|^061|^062|^063|^064|^065|^066|^07|^080|^081|^082|^083|^084|^085|^086|
+                                  ^087|^088|^09|^100|^101|^102|^103|^104|^110|^111|^112|^113|
+                                  ^114|^115|^116|^117|^118|^12|^130|^131|^132|^133|^134|^135|^136|^137|^138|^139", diagnosis))
+      | (icd.version==10 & grepl("^A|^B", diagnosis))) %>%
+  mutate(infect = 1,
+         admit.date = ymd(as.character(admit.date))) %>%
+  arrange(id, admit.date) %>%
+  group_by(id) %>%
+  mutate(first.infect.date = first(admit.date)) %>%
+  slice(1) %>%
+  select(id,infect,first.infect.date)
+
+infect <- inner_join(first.scz.date,infect) # inner join together with scz cases
+
+infect <- infect %>%
+  mutate(age.first.infect = as.numeric((first.infect.date - dob)/365.25),
+         infect.childhood = ifelse(age.first.infect <= 15, 1, 0), # only those with infect dx before age 15 years
+         infect.pre.scz = ifelse(first.infect.date < first_scz_date, 1, 0)  #  only those with infect dx before scz contact
+  ) %>%
+  select(id,infect.childhood,infect.pre.scz)
+
+scz <- left_join(scz, infect)
+rm(infect)
+scz <- scz %>%
+  mutate(infect.childhood=ifelse(is.na(infect.childhood),0,infect.childhood),
+         infect.pre.scz=ifelse(is.na(infect.pre.scz),0,infect.pre.scz))
+
+```
 ### Step 6: Exposure - Education
 + Year 9 grades
 + Educational attainment

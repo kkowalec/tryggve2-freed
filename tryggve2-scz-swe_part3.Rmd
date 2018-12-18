@@ -2578,8 +2578,8 @@ scz <- left_join(scz, outcome6)
 rm(outcome6)
 
 ```
-### Step X: Outcome 7: Disability
-1.9 Income and civil status: from LISA register
+### Step X: Outcome 7: Disability, divorce
+1.9 Income and civil status: from LISA register, on a per-year basis
 + Required Variables:
   + unique ID - rename as "id"  
   + civil - rename as "civil.status"
