@@ -404,6 +404,7 @@ ggplot(data=income.sum, aes(x=as.integer(year), y=income.mean)) +
 # read in EU specific ‘poverty threshold’: below national 60%: 
 # https://ec.europa.eu/eurostat/web/products-datasets/product?code=tessi014
 # this value is set at 60 % of the national median equivalised disposable income (after social transfers). It is expressed in Purchase Parity Standards (PPS) in order to take into account differences in cost of living across EU Member States.
+
 eu.povr <- fread("/Users/kaarinakowalec/Documents/Projects/5.tryggve2/tryggve2/paper1/tessi014.tsv",header=T) %>%
   as_tibble()
 
