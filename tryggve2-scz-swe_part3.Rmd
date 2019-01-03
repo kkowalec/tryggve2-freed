@@ -74,7 +74,7 @@ library(tidyverse)
 library(data.table)
 #library(ggplot2)
 library(lubridate)
-library(stringr)
+#library(stringr)
 library(skimr)
 
 Sys.setenv(TZ="Europe/Stockholm")
@@ -425,13 +425,35 @@ income.std %>%
   group_by(birth.yr, sex) %>% 
   summarise(mean(income.std_byr_sex), sd(income.std_byr_sex))
 
-### civil status
-
+############################################
+############ civil status ##################
+############################################
 civil <- lisa %>%
+  filter(!is.na(civil.status)) %>%
   group_by(id, civil.status) %>%
   summarise(n=n()) %>%
-  mutate(num_civil_chg = n)
+  group_by(id) %>%
+  summarise(n=n()) %>%
+  filter(n>1) %>%
+  select(-n)
 
+table(civil$num_chg)
+#    1     2     3     4     5 
+#53777  7658  2208    31     1
+
+
+# merge back w original data
+
+civil <- left_join(civil, lisa)
+
+civil <- civil %>%
+  arrange(id, year) %>%
+  filter(!is.na(civil.status)) %>%
+  select(id,year,civil.status)
+
+## incomplete here - fix
+
+#### 
 
 
 ```
