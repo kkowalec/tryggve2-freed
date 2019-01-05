@@ -80,7 +80,7 @@ library(skimr)
 Sys.setenv(TZ="Europe/Stockholm")
 ```
 
-### Step 1: Outcome 1: Suicide - attempts or completed
+### Step 1: Outcome 1 and 2: Suicide - attempts or completed
 Suicide attempt must have occurred after the first SCZ date and only need first one (for now)
 ```{r}
 # attempts from hospital discharge register
@@ -152,7 +152,7 @@ rm(sui.a, sui.c)
 ```
 
 
-### Step 2: Outcome 2: Premature mortality
+### Step 2: Outcome 3: Premature mortality
 + Mortality which occurs by age 56 years or earlier (any causes) (premature death=56 years as defined by Fazel, Lichtenstein, et al, Lancet Psychiatry 2014)
 + Could also take life expectancy in Sweden for both males and females in 2016 (82.2 years), less 25 years (expected number of years less for someone w SCZ) = 82-25 = 57 years
 ```{r}
@@ -181,7 +181,7 @@ scz <- left_join(scz, premature)
 rm(premature)
 ```
 
-### Step 3: Outcome 3: Hospitalisations for SCZ
+### Step 3: Outcome 4: Hospitalisations for SCZ
 
 ```{r}
 scz.hdr.ex <- fread("/Volumes/Common/projects/S3/S3_Research/tryggve2/tryggve_psych_v_hdr_ex_scz.tsv", sep="\t") %>%
@@ -255,7 +255,7 @@ scz <- left_join(scz, outcome4)
 rm(outcome4)
 
 ```
-### Step 4: Outcome 4: Treatment resistance - Clozapine only
+### Step 4: Outcome 5: Treatment resistance - Clozapine only
 ```{r}
 # combine yearly drug data
 y05 <- fread("/Volumes/Common/projects/S3/S3_Research/tryggve2/drug/tryggve_psych_cloz_y05.tsv", sep="\t") %>%
@@ -318,7 +318,7 @@ scz <- left_join(scz, outcome5)
 ```
 
 
-### Step 5: Outcome 5: Hospitalisation for somatic disease
+### Step 5: Outcome 6: Hospitalisation for somatic disease
 Do only cardiovascular disease for now.
 ```{r}
 
@@ -349,111 +349,57 @@ scz <- left_join(scz, outcome6)
 rm(outcome6)
 
 ```
-### Step 6: Outcome 6: Disability, divorce
+### Step 6: Outcome 7 and 8: Disability, divorce
 1.9 Income and civil status: from LISA register, on a per-year basis
 + Required Variables:
   + unique ID - rename as "id"  
-  + civil - rename as "civil.status"
-  + DISPINKPERSF/DISPINKPERSF04 - rename as "income"
+  + civil status
+  + income 
+  + sickness pension
+  + income support
   + year = year of assessment
-
 ```{r read in income and civil levels}
-lisa <- fread("/scz.lisa.tsv") %>%
-  as_tibble()
-# As per Christina Dalman BMJ 2016 paper on risk of SCZ in Sweden refugees, they used disposable income, estimated
-# from total family value
-# DISPINKPERSF/Disposable annual income. Individual, estimated from the total family value, 100 SEK (1990-2004). I.e. if the value is 970, then the individual made 97,000 kr annually?
-# DISPINKPERSF04/Disposable income. Individual, estimated from the total family value, 100 SEK (2004-2013)
+lisa <- fread("~/scz.lisa.income.tsv") %>%
+  as_tibble() %>%
+  mutate(income.sup=ifelse(!is.na(income.sup.yr),1,0)) %>%
+  rename(income.sup.date=income.sup.yr,
+         sick.pension.date=sick.pension.yr)
 
-lisa %>% count(civil.status)
-# A tibble: 7 x 2
-#  civil.status            n
-#  <chr>               <int>
-#1 Divorced           202243
-#2 Divorced partner      125
-#3 Married            162104
-#4 Registered partner    182
-#5 Surviving partner      16
-#6 Unmarried          758511
-#7 <NA>                42160
-
-lisa %>% count(year)
-# 14 years of data 1990-2013
-
-summary(lisa$income)
-#   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
-# -57691     773     970    1046    1198  359834 
-
-# how can a negative value be possible?
-# eliminate these for now
+lisa$income.sup.date <- sapply(lisa$income.sup.date, paste0, "0101")
+lisa$sick.pension.date <- sapply(lisa$sick.pension.date, paste0, "0101")
+lisa <- lisa %>%
+  mutate(income.sup.date = gsub("NA0101", NA, income.sup.date),
+         sick.pension.date = gsub("NA0101", NA, sick.pension.date)
+         )
 
 lisa <- lisa %>%
-  filter(income >= 0)
+  mutate(income.sup.date = ymd(as.character(income.sup.date)),
+         sick.pension.date = ymd(as.character(sick.pension.date))
+         ) 
 
-# plot out income
-income.sum <- lisa %>% 
-  group_by(year) %>% 
-  summarise(N=n(), income.mean = mean(income),income.sd = sd(income))
+lisa <- inner_join(first.scz.date,lisa) # inner join together with scz cases
 
-ggplot(data=income.sum, aes(x=as.integer(year), y=income.mean)) +
-  geom_point() +
-  labs(x="Assessment Year", y="Mean income")
-
-# clear trend, thus apply standardisation - see below
-
-# read in EU specific ‘poverty threshold’: below national 60%: 
-# https://ec.europa.eu/eurostat/web/products-datasets/product?code=tessi014
-# this value is set at 60 % of the national median equivalised disposable income (after social transfers). It is expressed in Purchase Parity Standards (PPS) in order to take into account differences in cost of living across EU Member States.
-
-eu.povr <- fread("/Users/kaarinakowalec/Documents/Projects/5.tryggve2/tryggve2/paper1/tessi014.tsv",header=T) %>%
-  as_tibble()
-
-eu.povr <- eu.povr[30,] # select only SWEDEN ("SE") value and for single household
-
-# Corresponds to #3, standardize income by birth year and sex 
-# TO - DO would need all income measures for entire popultion
-
-income.std <- lisa %>%
-  group_by(birth.yr, sex) %>% 
-  mutate(income.std_byr_sex = scale(income)) %>% 
-  ungroup() %>% 
-  filter(!is.na(income.std_byr_sex)) %>% # standardisation further generated some NAs? <- filter for now
-  select(id, income.std_byr_sex) 
-
-# can check whether standardisation is properly done using the following: 
-income.std %>% 
-  group_by(birth.yr, sex) %>% 
-  summarise(mean(income.std_byr_sex), sd(income.std_byr_sex))
-
-############################################
-############ civil status ##################
-############################################
-civil <- lisa %>%
-  filter(!is.na(civil.status)) %>%
-  group_by(id, civil.status) %>%
-  summarise(n=n()) %>%
+outcome7 <- lisa %>%
+  filter(income.sup.date > first_scz_date) %>% # remove income support before first scz contact or equal to first contact
+  arrange(id, income.sup.date) %>%
   group_by(id) %>%
-  summarise(n=n()) %>%
-  filter(n>1) %>%
-  select(-n)
+  mutate(date.outcome7 = first(income.sup.date),
+         outcome7 = 1) %>%
+  slice(1) %>%
+  select(id, date.outcome7, outcome7)
 
-table(civil$num_chg)
-#    1     2     3     4     5 
-#53777  7658  2208    31     1
+scz <- left_join(scz, outcome7)
+rm(outcome7)
 
+outcome8 <- lisa %>%
+  filter(sick.pension.date > first_scz_date) %>% # remove sickness pension before first scz contact or equal to first contact
+  arrange(id, sick.pension.date) %>%
+  group_by(id) %>%
+  mutate(date.outcome8 = first(sick.pension.date),
+         outcome8 = 1) %>%
+  slice(1) %>%
+  select(id, date.outcome8, outcome8)
 
-# merge back w original data
-
-civil <- left_join(civil, lisa)
-
-civil <- civil %>%
-  arrange(id, year) %>%
-  filter(!is.na(civil.status)) %>%
-  select(id,year,civil.status)
-
-## incomplete here - fix
-
-#### 
-
-
+scz <- left_join(scz, outcome8)
+rm(outcome8)
 ```
