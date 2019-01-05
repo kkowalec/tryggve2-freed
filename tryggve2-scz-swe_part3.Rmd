@@ -349,7 +349,7 @@ scz <- left_join(scz, outcome6)
 rm(outcome6)
 
 ```
-### Step 6: Outcome 7 and 8: Disability, divorce
+### Step 6: Outcome 7-9: income support, sickness pension, divorce
 1.9 Income and civil status: from LISA register, on a per-year basis
 + Required Variables:
   + unique ID - rename as "id"  
@@ -358,6 +358,7 @@ rm(outcome6)
   + sickness pension
   + income support
   + year = year of assessment
+  + divorce
 ```{r read in income and civil levels}
 lisa <- fread("~/scz.lisa.income.tsv") %>%
   as_tibble() %>%
@@ -402,4 +403,31 @@ outcome8 <- lisa %>%
 
 scz <- left_join(scz, outcome8)
 rm(outcome8)
+
+##### divorce ######
+
+div <- fread("~/scz.lisa.div.tsv") %>%
+  as_tibble()
+
+div$divorce.yr <- sapply(div$divorce.yr , paste0, "0101")
+div <- div %>%
+  mutate(divorce.yr = gsub("NA0101", NA, divorce.yr)
+         )
+
+div <- div %>%
+  mutate(divorce.date = ymd(as.character(divorce.yr))) 
+
+div <- inner_join(first.scz.date,div) # inner join together with scz cases
+
+outcome9 <- div %>%
+  filter(divorce.date > first_scz_date) %>% # remove divorce before first scz contact or equal to first contact
+  arrange(id, divorce.date) %>%
+  group_by(id) %>%
+  mutate(date.outcome9 = first(divorce.date),
+         outcome9 = 1) %>%
+  slice(1) %>%
+  select(id, date.outcome9, outcome9)
+
+scz <- left_join(scz, outcome9)
+rm(outcome9,div)
 ```
