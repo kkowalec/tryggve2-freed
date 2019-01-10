@@ -1038,18 +1038,19 @@ rm(education.std)
 # (here does not need scz.kid)
 
 # paternal age at child birth: 
-parent.age <- left_join(scz.parent, pop, by=c( "dad.id" = "id")) %>% # merge with population register to get dob for the dad
-  select(-first_scz_date, -scz, -sex, -birth.country, -swe.born) %>% # drop unwanted
+parent.age <- left_join(scz.parent, pop, by=c( "dad.id" = "id")) # merge with population register to get dob for the dad
+parent.age <- parent.age %>%
+  select(id,dob.x:mom.id,dob.y) %>% # drop unwanted
   rename(index.dob = dob.x) %>% # index person's dob
-  mutate(dad.dob = ymd(dob.y), dob.y=NULL) %>% # father's dob
+  mutate(dad.dob = ymd(dob.y, truncated = 2)) %>% # father's dob
   mutate(paternal_age = as.integer((index.dob - dad.dob)/365.25)) # calculate father's age
-  
+
 # maternal age at child birth: 
 parent.age <- left_join(parent.age, pop, by=c( "mom.id" = "id")) %>% # merge with population register to get dob for the mom
-  select(-sex, -birth.country, -swe.born) %>% 
-  mutate(mom.dob = ymd(dob), dob=NULL) %>% # mother's dob
+  select(id:paternal_age,dob) %>% 
+  mutate(mom.dob = ymd(dob, truncated = 2)) %>% # mother's dob
   mutate(maternal_age = as.integer((index.dob - mom.dob)/365.25)) # calculate mother's age
-  
+
 # check summary statistics of mean maternal/paternal age stratified by birthyr 
 parentage.sum <- parent.age %>% 
   mutate(birth.yr = substr(index.dob, 1, 4)) %>% # grab birth year
@@ -1072,7 +1073,7 @@ ggplot(data=parentage.sum.2, aes(x=as.integer(birth.yr), y= mean, group = parent
   labs(title = "Parental age at child birth (SCZ/SAD patients as index)",
        x="Birth Year", y="Mean parental age at child birth") +
   scale_x_continuous(limits = c(1932, 1990)) +
-  scale_y_continuous(limits = c(20, 35)) +
+  scale_y_continuous(limits = c(20, 37)) +
   theme(legend.title=element_blank()) 
 # looks like parental age is fairly stable over the birth years. 
 # no need to standardise by birth year. 
@@ -1082,36 +1083,15 @@ ggplot(data=parentage.sum.2, aes(x=as.integer(birth.yr), y= mean, group = parent
 
 ```{r merge parental age with SCZ ind}
 # finally, merge with the main database of SCZ patients
-scz.perind <- 
-  left_join(scz.perind, parent.age, by = "id") %>% 
-  select(-index.dob, -dad.id, -mom.id, -dad.dob, -mom.dob)
+parent.age <- parent.age %>% select(id,paternal_age,maternal_age)
 
+scz.perind <- 
+  left_join(scz.perind, parent.age, by = "id") 
 # cleaning up
 # remove unwanted data frames
 rm(parentage.sum, parentage.sum.2)
 
 ```
-
-```{r parental SES - TO DO}
-# parental SES-education-occupation-income
-
-```
-
-```{r parental education - TO DO}
-# parent education - linking from above education register + multigen reg
-
-```
-
-```{r birth order - TO DO}
-
-```
-
-```{r family composition - TO DO}
-# family composition (number of parents/partners, divorce, siblings, out-of-home placement)
-# multigeneration register for number of parents, kids
-
-```
-
 ### Step 8: Exposure - Childhood trauma
 + parental death: cause of death + multigen that occurs <= 15 year (to be consistent with previous definition of psych comorbidity during childhood)
 + severe medical illness = "severe" would be? age < 18 year?  
@@ -1120,14 +1100,14 @@ rm(parentage.sum, parentage.sum.2)
 # need pre-defined dataset: scz.parent, which incl. variables of id, dob, dad.id, mom.id 
 
 # need to read in CauseDeath register again
-death <- fread(death.f, sep="\t") %>%
+death <- fread("~/death.tsv", sep="\t") %>%
   as_tibble() %>%
   rename("id"="LOPNR","dod"="X_DODSDATUM")
 
 
 # index person's age at father's death: 
 parent.death <- left_join(scz.parent, death, by=c( "dad.id" = "id")) %>% # merge with cause of death register to get dod for the dad
-  select(-first_scz_date, -scz) %>% # drop unwanted
+  select(id,dob:dod) %>% # drop unwanted
   rename(index.dob = dob) %>% # index person's date of birth
   mutate(dad.dod = ymd(dod), dod=NULL) %>% # father's date of death
   mutate(age_fatherdied = as.integer((dad.dod -index.dob )/365.25), # calculate index person's age when father died
@@ -1145,12 +1125,13 @@ parent.death %<>%
   # if neither of the parents died before index was 15, then parental.breavement = 0   # ???*CORRECT*:if any of the 4 relatives has no SCZ (Note: after the first condition was applied, this basically grabs those status of 0s or NAs), then fhx = 0
   # otherwise NAs
   mutate(parental.breavement = case_when(motherdied.childhood==1 | fatherdied.childhood==1 ~ 1,
-                         motherdied.childhood==0 & fatherdied.childhood==0 ~ 0,
-                         TRUE ~ NA_real_)) %>% 
+                                         motherdied.childhood==0 & fatherdied.childhood==0 ~ 0,
+                                         TRUE ~ NA_real_)) %>% 
   select(id, parental.breavement)
 
 # need to check the cross-table
 table(parent.death$parental.breavement, exclude=NULL)
+
 
 ```
 
