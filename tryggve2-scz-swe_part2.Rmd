@@ -358,7 +358,7 @@ scz.suds <- inner_join(first.scz.date,suds, by="id") %>% # inner join together w
   ) %>%
   select(id, nsudcontacts, suds.childhood, suds.pre.scz)
 ```
-10. Suicide  <<- NO RECORDS???
+10. Suicide
 ```{r suicide}
 # first extract all individuals with suicide attempts?  
 sui <- hdr %>%
@@ -387,7 +387,7 @@ scz.sui <- inner_join(first.scz.date,sui, by="id") %>% # inner join together wit
 ```{r All psych comorbidity}
 
 psych.comorbid <- full_join(scz.bip, scz.anx, by = "id")
-psych.comorbid <- full_join(psych.comorbid,scz.ptsd, by = "id")
+psych.comorbid <- full_join(psych.comorbid, scz.ptsd, by = "id")
 psych.comorbid <- full_join(psych.comorbid, scz.adhd, by = "id")
 psych.comorbid <- full_join(psych.comorbid, scz.ed, by = "id")
 psych.comorbid <- full_join(psych.comorbid, scz.suds, by = "id")
@@ -399,7 +399,7 @@ psych.comorbid <- full_join(psych.comorbid, scz.sui, by = "id")
 rm(scz.bip,scz.anx,scz.ptsd,scz.adhd,scz.ed,scz.sui,scz.suds,scz.ocd,scz.asd,scz.mdd) # remove original dataframes
  
 ```
-12. Merge with SCZ per-indiv records
+12. Merge with SCZ per-indiv records & apply exclusion criteria
 ```{r merge with SCZ ind}
 scz.perind <- left_join(scz.perind, psych.comorbid, by = "id")
 rm(psych.comorbid)
@@ -407,6 +407,18 @@ rm(psych.comorbid)
 # replace the NAs in comorbidity columns as 0
 scz.perind <- scz.perind %>%
   mutate_at(vars(nbipcontacts:sui.pre.scz),funs(replace(., is.na(.),0)))
+
+# Exclusion criteria for SCZ cases
+# For Bipolar disorder, need to exclude SCZ cases w BIP as the dominant 
+# diagnosis (SCZ/SAD ≤ 5 and BIP contacts ≥ 5)  and
+# Illicit drug or alcohol dependent predominated (SCZ/SAD ≤ 5 and 
+# SUDS contacts ≥ 50) 
+
+scz.perind <- scz.perind %>%
+  mutate(case.exclu = case_when(nbipcontacts >= 5 & nsczcontacts <= 5 ~ "bip.main.dx",
+                                nsczcontacts <= 5 & nsudcontacts >= 50 ~ "suds.main.dx",
+                                TRUE ~ NA_character_)) %>%
+  filter(is.na(case.exclu)) # keep only those where bip / suds not prominent
  
 ```
 13. Medication use  --- wait until decide on specific drugs
