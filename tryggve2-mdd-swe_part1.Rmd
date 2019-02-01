@@ -96,17 +96,17 @@ Other registers:
 Add full path for each dataset <- REQUIRE EDITING on the file path
 ```{r specify file path}
 # Required:
-hdr.f <- "/Volumes/projects/S3/S3_Research/tryggve2/tryggve_psych_v_npr.tsv"
-pop.f <- "/Volumes/projects/S3/S3_Research/tryggve2/tryggve_psych_v_indiv.tsv"
-death.f <- "/Volumes/projects/S3/S3_Research/tryggve2/tryggve_psych_v_death.tsv"
-migrate.f <- "/Volumes/projects/S3/S3_Research/tryggve2/tryggve_psych_v_migrate.tsv"
-parent.f <- "/Volumes/projects/S3/S3_Research/tryggve2/tryggve_psych_v_parent.tsv"
-child.f <- "/Volumes/projects/S3/S3_Research/tryggve2/tryggve_psych_v_child.tsv"
-birth.f <- "/Volumes/projects/S3/S3_Research/tryggve2/tryggve_psych_v_mbr.tsv"
-education.f <- "/Volumes/projects/S3/S3_Research/tryggve2/tryggve_psych_v_education.tsv"
+hdr.f <- "/Volumes/tryggve_psych_v_npr.tsv"
+pop.f <- "/Volumes/tryggve_psych_v_indiv.tsv"
+death.f <- "/Volumes/tryggve_psych_v_death.tsv"
+migrate.f <- "/Volumes/tryggve_psych_v_migrate.tsv"
+parent.f <- "/Volumes/tryggve_psych_v_parent.tsv"
+child.f <- "/Volumes/tryggve_psych_v_child.tsv"
+birth.f <- "/Volumes/tryggve_psych_v_mbr.tsv"
+education.f <- "/Volumes/tryggve_psych_v_education.tsv"
 
 # Other:
-grades.f <- "/Volumes/projects/S3/S3_Research/tryggve2/tryggve_psych_v_grades.tsv"
+grades.f <- "/Volumes/tryggve_psych_v_grades.tsv"
 
 ```
 
