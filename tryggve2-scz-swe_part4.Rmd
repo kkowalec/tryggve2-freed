@@ -1,0 +1,586 @@
+---
+title: "Tryggve2 - Schizophrenia - Sweden - Part 4"
+author: "Kaarina Kowalec, kaarina.kowalec@ki.se"
+date: "March 2019"
+output: 
+  html_document: 
+    fig_caption: yes
+    theme: simplex
+    highlight: zenburn
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+### Motivation and Overview
+
+NOTE: NOT RUN
+
+Examine variables associated with poor outcomes in schizophrenia, using first, the Swedish National Registers. In this report, I will present some initial coding for the analyses.
+
+**Overview**
+
+1. Import data
+2. Create a dataframe with all necessary variables including exposures and outcomes
+3. Analyses
+
+***
+
+### Step 0: Load R packages
+```{r R packages}
+library(tidyverse)
+library(survival)
+library(broom)
+library(kableExtra)
+library(lubridate)
+
+Sys.setenv(TZ="Europe/Stockholm")
+```
+
+### Step 1: Limit to study cohort
+```{r}
+# birth cohort & SCZ 2x dx case definition
+scz <- scz %>%
+  mutate(birthyear = str_extract(dob,"[:digit:]{4}"))
+
+scz$birthyear <- as.numeric(scz$birthyear)
+
+studypop <- scz %>% 
+  filter(!is.na(second_scz_date) &
+           birth.country == "Sweden" &
+           !is.na(swe.birth.county) &
+           birthyear %in% c(1958:1993) &
+           case.exclu == 0)
+
+# need a variable indicating which outcome was first reached & time to reach 
+# need to reshape data such that each individual has multiple rows
+# outcomes dataframe
+
+outcomes <- studypop %>%
+  select(-date.outcome6, -date.outcome8, -outcome6, -outcome8) %>% 
+  #removed date.outcome6-CVD, outcome=sicknesspension-for now
+  arrange(id) %>%
+  mutate(end.follow = ymd("2014-12-31")) %>%
+  gather("date.outcome1","date.outcome2", "date.outcome3", "date.outcome4", 
+         "date.outcome5", "date.outcome7", "date.outcome9","dod",
+         "first.emigrate.date","end.follow",
+         key = "outcome",
+         value = "date") %>%
+  select(id, outcome1:date, scz:z_edlevel) %>%
+  arrange(id,date) %>%
+  group_by(id) %>%
+  mutate(date.outcome.reached = first(date)) %>%
+  select(id, date.outcome.reached, outcome1:outcome9,outcome:first_scz_date) %>%
+  slice(1) 
+
+outcomes <- outcomes %>%
+  mutate(time = as.numeric(date - first_scz_date)/365.25) %>% # calculate time 
+  filter(time >= 0) # remove people who emigrated before reached outcome
+
+outcomes$outcome <- as.factor(outcomes$outcome)
+
+outcomes <- outcomes %>%
+  mutate(outcome_di = ifelse(outcome!="end.follow" & outcome!="dod" &
+                            outcome!="first.emigrate.date", 1, 0),
+         outcome_cat = case_when(outcome=="date.outcome1"~"suicide.attempt",
+                             outcome=="date.outcome2"~"suicide.complete",
+                             outcome=="date.outcome3"~"premature.mortality",
+                             outcome=="date.outcome4"~"hospitalised.100days",
+                             outcome=="date.outcome5"~"clozapine.prescrip",
+                             outcome=="date.outcome7"~"income.support",
+                             outcome=="date.outcome9"~"divorce",             
+                             outcome=="dod"~"died(not premature",
+                             outcome=="end.follow"~"end.of.follow",
+                             outcome=="first.emigrate.date"~"emigrated",
+                             TRUE ~ NA_character_)
+  ) %>%
+  select(id, date.outcome.reached, time, outcome_di,outcome_cat) %>%
+  rename("fu.time"="time")
+#rm outcome=="date.outcome8"~"sickness.pension",
+
+# merge back w exposures
+
+analysis <- left_join(outcomes,scz)
+
+        
+###############################
+#CONTINUOUS VARIABLES
+studypop.sum.continuous <- analysis %>% 
+  group_by(outcome_cat) %>% 
+  summarise(
+    N=n(), 
+    Follow.up.time = round(mean(fu.time),digits=2),
+    Number.of.SCZ.contacts = round(mean(nsczcontacts, na.rm=T), digits = 2),
+    Number.of.SCZ.inpatient = round(mean(nsczinpt, na.rm=T), digits = 2),
+    Number.of.SCZ.outpatient = round(mean(nsczoutpt, na.rm=T), digits = 2),
+    Age.at.SCZ.dx = round(mean(age.first.scz, na.rm=T), digits = 2),
+    Year9.Grade = round(mean(std.grade, na.rm=T), digits = 2),
+    EducationalAttain = round(mean(z_edlevel, na.rm=T), digits = 2),
+    Paternal.age = round(mean(paternal_age, na.rm=T), digits = 2),
+    Maternal.age = round(mean(maternal_age, na.rm=T), digits = 2)
+  ) %>%
+  arrange(desc(N)) %>%
+  mutate("%" = round((N/13561)*100,digits=2)) %>%
+  select(outcome_cat,N,"%","Follow.up.time","Number.of.SCZ.contacts":"Maternal.age")
+
+studypop.sum.continuous <- as.data.frame(t(studypop.sum.continuous))
+
+studypop.sum.continuous <- studypop.sum.continuous %>%
+  rename("End of Follow Up"="V1",
+         "Long Hospitalisation"="V2",
+         "Income support"="V3",
+         "Treatment-Resistance"="V4",
+         "Suicide attempt"="V5",
+         "Premature death"="V6",
+         "Divorce"="V7",
+         "Suicide completed"="V8",
+         "Emigrated"="V9",
+         "Died, not premature"="V10")
+
+studypop.sum.continuous = studypop.sum.continuous[-1, ]
+
+studypop.sum.continuous <- studypop.sum.continuous[,c(2,4,5,6,8,3,7,1,9,10)]
+
+kable(studypop.sum.continuous, align = "c", "html") %>%
+  kable_styling("striped", full_width = F) %>%
+  add_header_above(c(" " = 1, "Outcome reached" = 7, "Did not reach outcomes" = 3)) %>%
+  group_rows(" ", 1, 2) %>%
+  group_rows("Continuous variables", 3, 8) %>%
+  footnote("Based on 13,561 individuals born in Sweden between 1958 and 1993 with schizophrenia or schizoaffective disorder"
+  ) %>%
+  save_kable(file = "~/Documents/projects/5.tryggve2/tryggve2/paper1/tryggve2.freed.scz.table1.7March2019.html", self_contained = T)
+
+
+#CATEGORICAL VARIABLES - combine psych variables
+analysis <- analysis %>%
+  mutate(psych_childhood = case_when(bip.childhood == 1 |
+                                       anx.childhood == 1 |
+                                       ptsd.childhood == 1 |
+                                       adhd.childhood == 1 |
+                                       ed.childhood == 1 |
+                                       sui.childhood == 1 |
+                                       ocd.childhood == 1 |
+                                       suds.childhood == 1 |
+                                       asd.childhood == 1 |
+                                       mdd.childhood == 1 ~ 1,
+                                     bip.childhood == 0 |
+                                       anx.childhood == 0 |
+                                       ptsd.childhood == 0 |
+                                       adhd.childhood == 0 |
+                                       ed.childhood == 0 |
+                                       sui.childhood == 0 |
+                                       ocd.childhood == 0 |
+                                       suds.childhood == 0 |
+                                       asd.childhood == 0 |
+                                       mdd.childhood == 0 ~ 0,
+                                     TRUE ~ NA_real_))
+
+analysis <- analysis %>%
+  mutate(psych_pre.scz = case_when(bip.pre.scz == 1 |
+                                     anx.pre.scz == 1 |
+                                     ptsd.pre.scz == 1 |
+                                     adhd.pre.scz == 1 |
+                                     ed.pre.scz == 1 |
+                                     sui.pre.scz == 1 |
+                                     ocd.pre.scz == 1 |
+                                     suds.pre.scz == 1 |
+                                     asd.pre.scz == 1 |
+                                     mdd.pre.scz == 1 ~ 1,
+                                   bip.pre.scz == 0 |
+                                     anx.pre.scz == 0 |
+                                     ptsd.pre.scz == 0 |
+                                     adhd.pre.scz == 0 |
+                                     ed.pre.scz == 0 |
+                                     sui.pre.scz == 0 |
+                                     ocd.pre.scz == 0 |
+                                     suds.pre.scz == 0 |
+                                     asd.pre.scz == 0 |
+                                     mdd.pre.scz == 0 ~ 0,
+                                   TRUE ~ NA_real_))
+
+analysis <- analysis %>%
+  mutate(psych_fhx = case_when(fhx.scz == 1 |
+                                 fhx.bp == 1 |
+                                 fhx.anx == 1 |
+                                 fhx.ptsd == 1 |
+                                 fhx.adhd == 1 |
+                                 fhx.ed == 1 |
+                                 fhx.sui == 1 |
+                                 fhx.ocd == 1 |
+                                 fhx.suds == 1 |
+                                 fhx.asd == 1 |
+                                 fhx.mdd == 1 ~ 1,
+                               fhx.scz == 0 |
+                                 fhx.bp == 0 |
+                                 fhx.anx == 0 |
+                                 fhx.ptsd == 0 |
+                                 fhx.adhd == 0 |
+                                 fhx.ed == 0 |
+                                 fhx.sui == 0 |
+                                 fhx.ocd == 0 |
+                                 fhx.suds == 0 |
+                                 fhx.asd == 0 |
+                                 fhx.mdd == 0 ~ 0,
+                               TRUE ~ NA_real_)
+  )
+
+outcomeN <- analysis %>% 
+  group_by(outcome_cat) %>% 
+  summarise(
+    grpN=n())
+
+sex <- analysis %>%
+  filter(sex==1) %>%
+  group_by(outcome_cat) %>%
+  summarise(Males=n()) 
+sex <- left_join(sex,outcomeN)
+sex <- sex %>%
+  mutate(Males_percent = round((Males/grpN)*100,digits=2),
+         Males_percent = sapply(Males_percent,paste0, "%"),
+         Males=str_c(Males,Males_percent,sep=", ",collapse = NULL))
+         
+ai.childhood <- analysis %>%
+  filter(ai.childhood==1) %>%
+  group_by(outcome_cat) %>%
+  summarise(autoimmune.childhood=n()) 
+ai.childhood <- left_join(ai.childhood,outcomeN)
+ai.childhood <- ai.childhood %>%
+  mutate(autoimmune.childhood_percent = round((autoimmune.childhood/grpN)*100,digits=2),
+         autoimmune.childhood_percent = sapply(autoimmune.childhood_percent,paste0, "%"),
+         autoimmune.childhood=str_c(autoimmune.childhood,autoimmune.childhood_percent,sep=", ",collapse = NULL)
+  )
+
+ai.pre.scz <- analysis %>%
+  filter(ai.pre.scz==1) %>%
+  group_by(outcome_cat) %>%
+  summarise(ai.pre.scz=n())
+ai.pre.scz <- left_join(ai.pre.scz,outcomeN)
+ai.pre.scz <- ai.pre.scz %>%
+  mutate(ai.pre.scz_percent = round((ai.pre.scz/grpN)*100,digits=2),
+         ai.pre.scz_percent = sapply(ai.pre.scz_percent,paste0, "%"),
+         ai.pre.scz=str_c(ai.pre.scz,ai.pre.scz_percent,sep=", ",collapse = NULL)
+  )
+
+cvd.childhood <- analysis %>%
+  filter(cvd.childhood==1) %>%
+  group_by(outcome_cat) %>%
+  summarise(cvd.childhood=n()) 
+cvd.childhood <- left_join(cvd.childhood,outcomeN)
+cvd.childhood <- cvd.childhood %>%
+  mutate(cvd.childhood_percent = round((cvd.childhood/grpN)*100,digits=2),
+         cvd.childhood_percent = sapply(cvd.childhood_percent,paste0, "%"),
+         cvd.childhood=str_c(cvd.childhood,cvd.childhood_percent,sep=", ",collapse = NULL)
+  )
+
+cvd.pre.scz <- analysis %>%
+  filter(cvd.pre.scz==1) %>%
+  group_by(outcome_cat) %>%
+  summarise(cvd.pre.scz=n())
+cvd.pre.scz <- left_join(cvd.pre.scz,outcomeN)
+cvd.pre.scz <- cvd.pre.scz %>%
+  mutate(cvd.pre.scz_percent = round((cvd.pre.scz/grpN)*100,digits=2),
+         cvd.pre.scz_percent = sapply(cvd.pre.scz_percent,paste0, "%"),
+         cvd.pre.scz=str_c(cvd.pre.scz,cvd.pre.scz_percent,sep=", ",collapse = NULL)
+  )
+
+#strk.childhood <- analysis %>%
+#  filter(strk.childhood==1) %>%
+ # group_by(outcome_cat) %>%
+#  summarise(strk.childhood=n()) 
+#strk.childhood <- left_join(strk.childhood,outcomeN)
+#strk.childhood <- strk.childhood %>%
+ # mutate(strk.childhood_percent = round((strk.childhood/grpN)*100,digits=2),
+   #      strk.childhood_percent = sapply(strk.childhood_percent,paste0, "%"),
+  #       strk.childhood=str_c(strk.childhood,strk.childhood_percent,sep=", ",collapse = NULL)
+  #)
+
+#strk.pre.scz <- analysis %>%
+ # filter(strk.pre.scz==1) %>%
+  #group_by(outcome_cat) %>%
+  #summarise(strk.pre.scz=n()) 
+#strk.pre.scz <- left_join(strk.pre.scz,outcomeN)
+#strk.pre.scz <- strk.pre.scz %>%
+ # mutate(strk.pre.scz_percent = round((strk.pre.scz/grpN)*100,digits=2),
+  #       strk.pre.scz_percent = sapply(strk.pre.scz_percent,paste0, "%"),
+   #      strk.pre.scz=str_c(strk.pre.scz,strk.pre.scz_percent,sep=", ",collapse = NULL)
+  #)
+
+cancer.childhood <- analysis %>%
+  filter(cancer.childhood==1) %>%
+  group_by(outcome_cat) %>%
+  summarise(cancer.childhood=n()) 
+cancer.childhood <- left_join(cancer.childhood,outcomeN)
+cancer.childhood <- cancer.childhood %>%
+  mutate(cancer.childhood_percent = round((cancer.childhood/grpN)*100,digits=2),
+         cancer.childhood_percent = sapply(cancer.childhood_percent,paste0, "%"),
+         cancer.childhood=str_c(cancer.childhood,cancer.childhood_percent,sep=", ",collapse = NULL)
+  )
+
+cancer.pre.scz <- analysis %>%
+  filter(cancer.pre.scz==1) %>%
+  group_by(outcome_cat) %>%
+  summarise(cancer.pre.scz=n())
+cancer.pre.scz <- left_join(cancer.pre.scz,outcomeN)
+cancer.pre.scz <- cancer.pre.scz %>%
+  mutate(cancer.pre.scz_percent = round((cancer.pre.scz/grpN)*100,digits=2),
+         cancer.pre.scz_percent = sapply(cancer.pre.scz_percent,paste0, "%"),
+         cancer.pre.scz=str_c(cancer.pre.scz,cancer.pre.scz_percent,sep=", ",collapse = NULL)
+  )
+
+infect.childhood <- analysis %>%
+  filter(infect.childhood==1) %>%
+  group_by(outcome_cat) %>%
+  summarise(infect.childhood=n())
+infect.childhood <- left_join(infect.childhood,outcomeN)
+infect.childhood <- infect.childhood %>%
+  mutate(infect.childhood_percent = round((infect.childhood/grpN)*100,digits=2),
+         infect.childhood_percent = sapply(infect.childhood_percent,paste0, "%"),
+         infect.childhood=str_c(infect.childhood,infect.childhood_percent,sep=", ",collapse = NULL)
+  )
+
+infect.pre.scz <- analysis %>%
+  filter(infect.pre.scz==1) %>%
+  group_by(outcome_cat) %>%
+  summarise(infect.pre.scz=n())
+infect.pre.scz <- left_join(infect.pre.scz,outcomeN)
+infect.pre.scz <- infect.pre.scz %>%
+  mutate(infect.pre.scz_percent = round((infect.pre.scz/grpN)*100,digits=2),
+         infect.pre.scz_percent = sapply(infect.pre.scz_percent,paste0, "%"),
+         infect.pre.scz=str_c(infect.pre.scz,infect.pre.scz_percent,sep=", ",collapse = NULL)
+  )
+
+parental.breavement <- analysis %>%
+  filter(parental.breavement==1) %>%
+  group_by(outcome_cat) %>%
+  summarise(parental.bereavement=n())
+parental.breavement <- left_join(parental.breavement,outcomeN)
+parental.breavement <- parental.breavement %>%
+  mutate(parental.breavement_percent = round((parental.bereavement/grpN)*100,digits=2),
+         parental.breavement_percent = sapply(parental.breavement_percent,paste0, "%"),
+         parental.bereavement=str_c(parental.bereavement,parental.breavement_percent,sep=", ",collapse = NULL)
+  )
+
+psych_childhood <- analysis %>%
+  filter(psych_childhood==1) %>%
+  group_by(outcome_cat) %>%
+  summarise(psych_childhood=n())
+psych_childhood <- left_join(psych_childhood,outcomeN)
+psych_childhood <- psych_childhood %>%
+  mutate(psych_childhood_percent = round((psych_childhood/grpN)*100,digits=2),
+         psych_childhood_percent = sapply(psych_childhood_percent,paste0, "%"),
+         psych_childhood=str_c(psych_childhood,psych_childhood_percent,sep=", ",collapse = NULL)
+  )
+
+psych_pre.scz <- analysis %>%
+  filter(psych_pre.scz==1) %>%
+  group_by(outcome_cat) %>%
+  summarise(psych_pre.scz=n())
+psych_pre.scz <- left_join(psych_pre.scz,outcomeN)
+psych_pre.scz <- psych_pre.scz %>%
+  mutate(psych_pre.scz_percent = round((psych_pre.scz/grpN)*100,digits=2),
+         psych_pre.scz_percent = sapply(psych_pre.scz_percent,paste0, "%"),
+         psych_pre.scz=str_c(psych_pre.scz,psych_pre.scz_percent,sep=", ",collapse = NULL)
+  )
+
+psych_fhx <- analysis %>%
+  filter(psych_fhx==1) %>%
+  group_by(outcome_cat) %>%
+  summarise(psych_fhx=n())
+psych_fhx <- left_join(psych_fhx,outcomeN)
+psych_fhx <- psych_fhx %>%
+  mutate(psych_fhx_percent = round((psych_fhx/grpN)*100,digits=2),
+         psych_fhx_percent = sapply(psych_fhx_percent,paste0, "%"),
+         psych_fhx=str_c(psych_fhx,psych_fhx_percent,sep=", ",collapse = NULL)
+  )
+
+studypop.sum.categorical <- full_join(sex, ai.childhood)
+studypop.sum.categorical <- full_join(studypop.sum.categorical, cvd.childhood)
+studypop.sum.categorical <- full_join(studypop.sum.categorical, ai.pre.scz)
+studypop.sum.categorical <- full_join(studypop.sum.categorical, cvd.pre.scz)
+#studypop.sum.categorical <- full_join(studypop.sum.categorical, strk.childhood)
+#studypop.sum.categorical <- full_join(studypop.sum.categorical, strk.pre.scz)
+studypop.sum.categorical <- full_join(studypop.sum.categorical, cancer.pre.scz)
+studypop.sum.categorical <- full_join(studypop.sum.categorical, cancer.childhood)
+
+studypop.sum.categorical <- full_join(studypop.sum.categorical, infect.childhood)
+studypop.sum.categorical <- full_join(studypop.sum.categorical, infect.pre.scz)
+studypop.sum.categorical <- full_join(studypop.sum.categorical, parental.breavement)
+studypop.sum.categorical <- full_join(studypop.sum.categorical, psych_childhood)
+studypop.sum.categorical <- full_join(studypop.sum.categorical, psych_pre.scz)
+studypop.sum.categorical <- full_join(studypop.sum.categorical, psych_fhx)
+
+studypop.sum.categorical <- studypop.sum.categorical %>%
+  select(-contains("_percent"))
+
+rm(sex, ai.childhood, ai.pre.scz, cvd.childhood, cvd.pre.scz, cancer.pre.scz,
+   cancer.childhood,infect.childhood,infect.pre.scz,
+   parental.breavement, psych_childhood, psych_pre.scz, psych_fhx)  
+
+studypop.sum.categorical <- studypop.sum.categorical %>%
+  select(outcome_cat, grpN, Males, psych_pre.scz, psych_fhx, psych_childhood, 
+         parental.bereavement, autoimmune.childhood, ai.pre.scz, cvd.childhood,
+         cvd.pre.scz, cancer.pre.scz, 
+         cancer.childhood, infect.childhood, infect.pre.scz)
+
+
+studypop.sum.categorical <- as.data.frame(t(studypop.sum.categorical))
+
+studypop.sum.categorical <- studypop.sum.categorical %>%
+  select(V5,V9,V6,V7,V10,V1,V8,V3,V4,V2)
+
+studypop.sum.categorical <- studypop.sum.categorical %>%
+  rename("End of Follow Up"="V5",
+         "Long Hospitalisation"="V6",
+         "Income support"="V7",
+         "Suicide attempt"="V9",
+         "Treatment-Resistance"="V1",
+         "Premature death"="V8",
+         "Divorce"="V3",
+         "Suicide completed"="V10",
+         "Emigrated"="V4",
+         "Died, not premature"="V2")
+
+studypop.sum.categorical = studypop.sum.categorical[-1, ]
+
+studypop.sum.categorical <- studypop.sum.categorical[,c(2,4,5,6,8,3,7,1,9,10)]
+
+kable(studypop.sum.categorical, align = "c", "html") %>%
+  kable_styling("striped", full_width = F) %>%
+  add_header_above(c(" " = 1, "Outcome reached (N, %)" = 7, "Did not reach outcomes (N, %)" = 3)) %>%
+  group_rows("Psychiatric", 3, 6) %>%
+  group_rows("Somatic", 7, 14) %>%
+  footnote("Based on 13,561 individuals born in Sweden between 1958 and 1993 with schizophrenia or schizoaffective disorder"
+  ) %>%
+  save_kable(file = "~/Documents/projects/5.tryggve2/tryggve2/paper1/tryggve2.freed.scz.table1b.07March2019.html", self_contained = T)
+
+# for meeting 01/2019 - only used to make table summarising # ppl reaching
+# each outcome
+outcomes$outcome_cat <- as.factor(outcomes$outcome_cat)
+
+df <- outcomes %>%
+  group_by(outcome_cat) %>%
+  summarise(n=n(),
+            median_follow_time = median(fu.time)) %>%
+  mutate(percent = (n/13561)*100) %>%
+  arrange(desc(n))
+```
+### Step X: Logistic regression
+```{r}
+
+
+
+log.reg <- glm(outcome_di ~ psych_pre.scz + sex + age.first.scz +
+                psych_fhx, family="binomial", data=analysis)
+summary(log.reg)
+exp(cbind("Odds ratio" = coef(log.reg), confint.default(log.reg, level = 0.95)))
+
+
+```
+### Step X: Cox regression
+```{r}
+
+# Cox regression - unadjusted
+
+analysis <- analysis %>%
+  mutate(sex = ifelse(sex==1, "M", "F"),
+         parental.breavement = ifelse(is.na(parental.breavement), 0, parental.breavement),
+         psych_fhx = ifelse(is.na(psych_fhx), 0, psych_fhx),
+         psych_pre.scz = ifelse(is.na(psych_pre.scz), 0, psych_pre.scz))
+
+cox1 <- coxph(Surv(fu.time, outcome_di) ~ psych_pre.scz + sex + age.first.scz +
+                psych_fhx, data=analysis)
+cox5 <- coxph(Surv(fu.time, outcome_di) ~ z_edlevel, data=analysis)
+cox6 <- coxph(Surv(fu.time, outcome_di) ~ parental.breavement, data=analysis)
+
+summary(cox1)
+summary(cox2)
+summary(cox3)
+summary(cox4)
+summary(cox5)
+summary(cox6)
+
+# try logistic regression
+
+# survival plot
+library(survival)
+## Used for visualizaiton.
+library(survminer)
+fit <- survfit(Surv(fu.time, outcome_di) ~ ai.pre.scz, data = analysis)
+ggsurvplot(fit,data=analysis,risk.table = TRUE)
+
+
+library(survivalROC.C)
+## Plot
+nobs <- NROW(analysis)
+cutoff <- 365
+fit4 <- survivalROC(Stime=analysis$fu.time,
+                       status = analysis$outcome_di,
+                       marker = analysis$psych_fhx +
+                      analysis$parental.breavement,
+                            predict.time = cutoff,
+                            span = 0.25*nobs^(-0.20))
+plot(fit4$FP, fit4$TP, type = "l",
+     xlim = c(0,1), ylim = c(0,1),
+     xlab = paste( "FP \n AUC =",round(fit4$AUC,3)),
+     ylab = "TP",main = "Year = 1" )
+abline(0,1)
+
+library(pROC)
+roc(outcome_di ~ psych_fhx, data=analysis)
+roc(outcome_di ~ age.first.scz + psych_pre.scz, data=analysis, plot=TRUE, ci=TRUE, 
+    smooth=TRUE, auc=TRUE)
+
+
+library(ggplot2)
+cox.reg <- cox.reg %>%
+  mutate(color = case_when( (.rownames == "ai.pre.scz" |
+                               .rownames == "infect.pre.scz" |
+                               .rownames =="cvd.pre.scz") ~ "somatic",
+                           (.rownames == "adhd.pre.scz" |
+                              .rownames == "ed.pre.scz"|
+                              .rownames =="asd.pre.scz"|
+                              .rownames =="suds.pre.scz"|
+                              .rownames =="anx.pre.scz"|
+                              .rownames =="ptsd.pre.scz"|
+                             .rownames =="bip.pre.scz"|
+                              .rownames =="mdd.pre.scz") ~ "psych",
+                           (.rownames == "age.first.scz" |
+                              .rownames =="sexM") ~ "demographic",
+                           TRUE ~ NA_character_
+  ) 
+  )
+
+
+cox.reg$.rownames <- factor(cox.reg$.rownames, 
+                            levels=c("age.first.scz","sexM","ai.pre.scz",
+                                     "infect.pre.scz","cvd.pre.scz",
+                                                        "adhd.pre.scz",
+                                     "ed.pre.scz","asd.pre.scz","suds.pre.scz",
+                                     "anx.pre.scz","ptsd.pre.scz",
+                                     "bip.pre.scz","mdd.pre.scz"
+                                                         ))
+
+cox.reg$color <- factor(cox.reg$color, 
+                        levels=(c("demographic","psych","somatic")))
+
+fpA <- ggplot(data=cox.reg) +
+  geom_pointrange(aes(x=.rownames, y=Hazard.ratio, ymin=X2.5..,
+                      ymax=X97.5..,color=color), size=.75) + 
+  coord_flip() +
+  geom_hline(yintercept=1,lty=1,size=.5) +  # add a dotted line
+  #facet_grid(. ~ color, scales = "free")  + 
+  xlab("Covariates included in multivariable Cox regression model") + 
+  ylab("Hazard Ratio (95% CI)") +
+  theme(axis.text.x = element_text(angle = 65, hjust = 1)) 
+  #annotate("text", x=5, y=1.3, size=2,color='black',
+#label="N=14,057 SCZ born in Sweden 1958-1993 followed from \n
+  #first clinical presentation to first of: \nsuicide, premature mortality, 
+   #        100d inpatient stay, clozapine, incomesupport, sickness pension, \ndivorce, died, emigrated \nor end of f/up")
+
+ggsave(file="~/cox.reg.forest.plot.27nov2018.png",fpA, width=8, height=5)
+
+```
+
+```{r save data}
+save.image(file = "../DATA/scz.part1.RData",compress = TRUE)
+```
