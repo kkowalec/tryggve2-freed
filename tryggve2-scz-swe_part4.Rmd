@@ -147,9 +147,7 @@ kable(studypop.sum.continuous, align = "c", "html") %>%
   group_rows(" ", 1, 2) %>%
   group_rows("Continuous variables", 3, 8) %>%
   footnote("Based on 13,561 individuals born in Sweden between 1958 and 1993 with schizophrenia or schizoaffective disorder"
-  ) %>%
-  save_kable(file = "~/Documents/projects/5.tryggve2/tryggve2/paper1/tryggve2.freed.scz.table1.7March2019.html", self_contained = T)
-
+  ) 
 
 #CATEGORICAL VARIABLES - combine psych variables
 analysis <- analysis %>%
@@ -173,7 +171,7 @@ analysis <- analysis %>%
                                        suds.childhood == 0 |
                                        asd.childhood == 0 |
                                        mdd.childhood == 0 ~ 0,
-                                     TRUE ~ NA_real_))
+                                     TRUE ~ 0))
 
 analysis <- analysis %>%
   mutate(psych_pre.scz = case_when(bip.pre.scz == 1 |
@@ -196,7 +194,7 @@ analysis <- analysis %>%
                                      suds.pre.scz == 0 |
                                      asd.pre.scz == 0 |
                                      mdd.pre.scz == 0 ~ 0,
-                                   TRUE ~ NA_real_))
+                                   TRUE ~ 0))
 
 analysis <- analysis %>%
   mutate(psych_fhx = case_when(fhx.scz == 1 |
@@ -221,7 +219,7 @@ analysis <- analysis %>%
                                  fhx.suds == 0 |
                                  fhx.asd == 0 |
                                  fhx.mdd == 0 ~ 0,
-                               TRUE ~ NA_real_)
+                               TRUE ~ 0)
   )
 
 outcomeN <- analysis %>% 
@@ -450,9 +448,7 @@ kable(studypop.sum.categorical, align = "c", "html") %>%
   group_rows("Psychiatric", 3, 6) %>%
   group_rows("Somatic", 7, 14) %>%
   footnote("Based on 13,561 individuals born in Sweden between 1958 and 1993 with schizophrenia or schizoaffective disorder"
-  ) %>%
-  save_kable(file = "~/Documents/projects/5.tryggve2/tryggve2/paper1/tryggve2.freed.scz.table1b.07March2019.html", self_contained = T)
-
+  )
 # for meeting 01/2019 - only used to make table summarising # ppl reaching
 # each outcome
 outcomes$outcome_cat <- as.factor(outcomes$outcome_cat)
@@ -466,15 +462,44 @@ df <- outcomes %>%
 ```
 ### Step X: Logistic regression
 ```{r}
-
-
+# merge df
+analysis <- left_join(analysis,outcomes, by="id")
 
 log.reg <- glm(outcome_di ~ psych_pre.scz + sex + age.first.scz +
-                psych_fhx, family="binomial", data=analysis)
+                psych_fhx + infect.pre.scz + cancer.pre.scz + ai.pre.scz, family="binomial", data=analysis)
 summary(log.reg)
-exp(cbind("Odds ratio" = coef(log.reg), confint.default(log.reg, level = 0.95)))
+log.reg <- tidy(exp(cbind("Odds ratio" = coef(log.reg), confint.default(log.reg, level = 0.95))))
 
+kable(log.reg, align = "c", "html") %>%
+  kable_styling("striped", full_width = F)
 
+library(olsrr)
+sub <- analysis %>%
+  ungroup() %>%
+  select(outcome_di,sex,age.first.scz,bip.pre.scz,anx.pre.scz,ptsd.pre.scz,adhd.pre.scz,ed.pre.scz,sui.pre.scz,suds.pre.scz,ocd.pre.scz,asd.pre.scz,mdd.pre.scz,fhx.scz,ai.pre.scz,cancer.pre.scz,infect.pre.scz,paternal_age,maternal_age,parental.breavement,psych_childhood,psych_pre.scz,psych_fhx,fu.time)
+
+sub$sex <- as.factor(sub$sex)
+sub$bip.pre.scz <- as.factor(sub$bip.pre.scz)
+sub$anx.pre.scz <- as.factor(sub$anx.pre.scz)
+sub$ptsd.pre.scz <- as.factor(sub$ptsd.pre.scz)
+sub$adhd.pre.scz <- as.factor(sub$adhd.pre.scz)
+sub$ed.pre.scz <- as.factor(sub$ed.pre.scz)
+sub$suds.pre.scz <- as.factor(sub$suds.pre.scz)
+sub$ocd.pre.scz <- as.factor(sub$ocd.pre.scz)
+sub$asd.pre.scz <- as.factor(sub$asd.pre.scz)
+sub$sui.pre.scz <- as.factor(sub$sui.pre.scz)
+sub$mdd.pre.scz <- as.factor(sub$mdd.pre.scz)
+sub$fhx.scz <- as.factor(sub$fhx.scz)
+sub$ai.pre.scz <- as.factor(sub$ai.pre.scz)
+sub$cancer.pre.scz <- as.factor(sub$cancer.pre.scz)
+sub$infect.pre.scz <- as.factor(sub$infect.pre.scz)
+sub$parental.breavement <- as.factor(sub$parental.breavement)
+sub$psych_childhood <- as.factor(sub$psych_childhood)
+sub$psych_pre.scz <- as.factor(sub$psych_pre.scz)
+sub$psych_fhx <- as.factor(sub$psych_fhx)
+
+model <- lm(outcome_di ~ ., data = sub)
+ols_step_forward_p(model)
 ```
 ### Step X: Cox regression
 ```{r}
@@ -482,103 +507,34 @@ exp(cbind("Odds ratio" = coef(log.reg), confint.default(log.reg, level = 0.95)))
 # Cox regression - unadjusted
 
 analysis <- analysis %>%
-  mutate(sex = ifelse(sex==1, "M", "F"),
-         parental.breavement = ifelse(is.na(parental.breavement), 0, parental.breavement),
-         psych_fhx = ifelse(is.na(psych_fhx), 0, psych_fhx),
-         psych_pre.scz = ifelse(is.na(psych_pre.scz), 0, psych_pre.scz))
+  mutate(sex = ifelse(sex==1, "M", "F"))
+analysis$sex <- as.factor(analysis$sex)
 
 cox1 <- coxph(Surv(fu.time, outcome_di) ~ psych_pre.scz + sex + age.first.scz +
                 psych_fhx, data=analysis)
-cox5 <- coxph(Surv(fu.time, outcome_di) ~ z_edlevel, data=analysis)
-cox6 <- coxph(Surv(fu.time, outcome_di) ~ parental.breavement, data=analysis)
+cox5 <- coxph(Surv(fu.time, outcome_di) ~ z_edlevel + sex + age.first.scz, data=analysis)
+cox6 <- coxph(Surv(fu.time, outcome_di) ~ parental.breavement+ sex + age.first.scz, data=analysis)
 
 summary(cox1)
-summary(cox2)
-summary(cox3)
-summary(cox4)
+cox1 <- tidy(exp(cbind("HR" = coef(cox1), confint.default(cox1, level = 0.95))))
+
 summary(cox5)
+cox5 <- tidy(exp(cbind("HR" = coef(cox5), confint.default(cox5, level = 0.95))))
 summary(cox6)
+cox6 <- tidy(exp(cbind("HR" = coef(cox6), confint.default(cox6, level = 0.95))))
 
-# try logistic regression
-
-# survival plot
-library(survival)
-## Used for visualizaiton.
-library(survminer)
-fit <- survfit(Surv(fu.time, outcome_di) ~ ai.pre.scz, data = analysis)
-ggsurvplot(fit,data=analysis,risk.table = TRUE)
-
-
-library(survivalROC.C)
-## Plot
-nobs <- NROW(analysis)
-cutoff <- 365
-fit4 <- survivalROC(Stime=analysis$fu.time,
-                       status = analysis$outcome_di,
-                       marker = analysis$psych_fhx +
-                      analysis$parental.breavement,
-                            predict.time = cutoff,
-                            span = 0.25*nobs^(-0.20))
-plot(fit4$FP, fit4$TP, type = "l",
-     xlim = c(0,1), ylim = c(0,1),
-     xlab = paste( "FP \n AUC =",round(fit4$AUC,3)),
-     ylab = "TP",main = "Year = 1" )
-abline(0,1)
-
-library(pROC)
-roc(outcome_di ~ psych_fhx, data=analysis)
-roc(outcome_di ~ age.first.scz + psych_pre.scz, data=analysis, plot=TRUE, ci=TRUE, 
-    smooth=TRUE, auc=TRUE)
+kable(cox1, align = "c", "html") %>%
+  kable_styling("striped", full_width = F)
+kable(cox5, align = "c", "html") %>%
+  kable_styling("striped", full_width = F)
+kable(cox6, align = "c", "html") %>%
+  kable_styling("striped", full_width = F)
 
 
-library(ggplot2)
-cox.reg <- cox.reg %>%
-  mutate(color = case_when( (.rownames == "ai.pre.scz" |
-                               .rownames == "infect.pre.scz" |
-                               .rownames =="cvd.pre.scz") ~ "somatic",
-                           (.rownames == "adhd.pre.scz" |
-                              .rownames == "ed.pre.scz"|
-                              .rownames =="asd.pre.scz"|
-                              .rownames =="suds.pre.scz"|
-                              .rownames =="anx.pre.scz"|
-                              .rownames =="ptsd.pre.scz"|
-                             .rownames =="bip.pre.scz"|
-                              .rownames =="mdd.pre.scz") ~ "psych",
-                           (.rownames == "age.first.scz" |
-                              .rownames =="sexM") ~ "demographic",
-                           TRUE ~ NA_character_
-  ) 
-  )
+library(My.stepwise)
 
-
-cox.reg$.rownames <- factor(cox.reg$.rownames, 
-                            levels=c("age.first.scz","sexM","ai.pre.scz",
-                                     "infect.pre.scz","cvd.pre.scz",
-                                                        "adhd.pre.scz",
-                                     "ed.pre.scz","asd.pre.scz","suds.pre.scz",
-                                     "anx.pre.scz","ptsd.pre.scz",
-                                     "bip.pre.scz","mdd.pre.scz"
-                                                         ))
-
-cox.reg$color <- factor(cox.reg$color, 
-                        levels=(c("demographic","psych","somatic")))
-
-fpA <- ggplot(data=cox.reg) +
-  geom_pointrange(aes(x=.rownames, y=Hazard.ratio, ymin=X2.5..,
-                      ymax=X97.5..,color=color), size=.75) + 
-  coord_flip() +
-  geom_hline(yintercept=1,lty=1,size=.5) +  # add a dotted line
-  #facet_grid(. ~ color, scales = "free")  + 
-  xlab("Covariates included in multivariable Cox regression model") + 
-  ylab("Hazard Ratio (95% CI)") +
-  theme(axis.text.x = element_text(angle = 65, hjust = 1)) 
-  #annotate("text", x=5, y=1.3, size=2,color='black',
-#label="N=14,057 SCZ born in Sweden 1958-1993 followed from \n
-  #first clinical presentation to first of: \nsuicide, premature mortality, 
-   #        100d inpatient stay, clozapine, incomesupport, sickness pension, \ndivorce, died, emigrated \nor end of f/up")
-
-ggsave(file="~/cox.reg.forest.plot.27nov2018.png",fpA, width=8, height=5)
-
+predict.list <- c("age.first.scz", "bip.pre.scz", "anx.pre.scz", "adhd.pre.scz", "ptsd.pre.scz","ed.pre.scz","sui.pre.scz","suds.pre.scz","ocd.pre.scz","asd.pre.scz","mdd.pre.scz","ai.pre.scz","cancer.pre.scz","infect.pre.scz","psych_childhood","psych_fhx")
+stepmodel <- My.stepwise.coxph(Time = "fu.time", Status = "outcome_di", variable.list = predict.list, data=sub)
 ```
 
 ```{r save data}
