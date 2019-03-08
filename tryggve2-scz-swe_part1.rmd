@@ -56,14 +56,6 @@ Examine variables associated with poor outcomes in schizophrenia, using first, t
 + indication of 2nd or 3rd line treatments (pharmacological augmentation, ECT, TMS, DBS, clozapine) 
 + suicide or suicide attempt
 
-**TO DOs**
-
-cut down this doc into 4 separate RMD (eventually):
-outcome
-exposure/risk factors
-basics
-analysis
-
 ***
 
 ### Step 0: Load R packages
@@ -294,7 +286,15 @@ Other registers <- SKIP FOR NOW
 
 2.1 Apply ICD codes to select SCZ cases 
 Note: we start with broad code, will refine the code later
-```{r extract SCZ cases}
+Added in the exclusion of cases that are predominant bipolar and substance
+use disorder.
+
+CASE EXCLUSIONS:
+
++ Bipolar disorder as the dominant diagnosis (SCZ/SAD ≤ 5 and BIP contacts ≥ 5) 
++ Illicit drug or alcohol dependent predominated (SCZ/SAD ≤ 5 and SUDS contacts ≥ 50) 
+
+```{r extract SCZ cases and create exclusion codes}
 scz <- hdr %>%
   filter((icd.version != 10 & substr(diagnosis,1,3) == "295") |
           (icd.version == 10 & substr(diagnosis,1,3) == "F20") |
@@ -303,6 +303,42 @@ scz <- hdr %>%
          scz_date = ymd(admit.date)) %>% # turn the date (character now) into R date object
   add_count(id) %>%  # record the number of diagnoses per individual into variable "n"
   mutate(nsczcontacts = n, n=NULL) # n=null removes the original n variable
+
+# exclusions
+bip <- scz.hdr %>%
+  filter( ((icd.version==8) & grepl('^2961|^2963|^2968',diagnosis)) |
+            ((icd.version==9) & grepl('^296|^269A|^269C|^2691|^296D|^2694|^296E|^2965|^296F|^2966|^296G|^2697|^269H|^2691|^26989|^269W|^26999|^269X',diagnosis)) | 
+            ((icd.version==10) & grepl('^F30$|^F301|^F302|^F308|^F309|^F31|^F310|^F311|^F312|^F313|^F314|^F315|^F316|^F317|^F318|^F319',diagnosis)) ) %>%
+  add_count(id) %>%
+  rename(bip=n) %>%
+  arrange(id) %>% # order by id
+  group_by(id) %>% # for each id
+  slice(1) %>%  # select the first row
+  select(id, bip )
+
+suds <- scz.hdr %>%
+  filter(  (icd.version==8 & grepl("^303|^3030|^3031|^3032|^3039|^304|^3040|^3041|^3042|^3043|^3044|^3045|^3046|^3047|^3048|^3049", diagnosis))
+           | (icd.version==9 & grepl("^303|^303A|^303X|^304|^304A|^304B|^304C|^304D|^304D|^304E|^304F|^304G|^304H|^304W|^304X|^305A|^305X", diagnosis))
+           | (icd.version==10 & grepl("^F10|^F100|^F101|^F102|^F103|^F104|^F105|^F106|^F107|^F108|^F109|^F11|^F110|^F111|^F112|^F113|^F114|^F115|^F116|^F117|^F118|^F119|
+                                      F19|^F190|^F191|^F192|^F192|^F194|^F195|^F196|^F197|^F198|^F199", diagnosis)) ) %>%
+  add_count(id) %>%
+  rename(suds=n) %>%
+  arrange(id) %>% # order by id
+  group_by(id) %>% # for each id
+  slice(1) %>%  # select the first row
+  select(id, suds )
+
+scz <- left_join(scz,bip)
+scz <- left_join(scz,suds)
+
+scz <- scz %>%
+  mutate(bip=ifelse(is.na(bip),0,bip),
+         suds=ifelse(is.na(suds),0,suds),
+         case.exclu = case_when((bip >= 5 & nsczcontacts <=5) | (nsczcontacts <= 5 & suds >=50) ~ 1,
+                                TRUE ~ 0)) %>%
+  select(-bip,-suds) # set case.exclu to 0 to filter out cases w exclusionary dx based on total N scz contacts 
+
+
 ```
 
 2.2 Record dates of first and second SCZ admission
