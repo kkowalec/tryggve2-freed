@@ -67,13 +67,13 @@ analysis
 ***
 
 ### Step 0: Load R packages
-```{r R packages}
+```{r R packages,message=FALSE,warning=FALSE}
 library(tidyverse)
 #library(dplyr)
 library(data.table)
 #library(ggplot2)
 library(lubridate)
-library(stringr)
+#library(stringr)
 library(skimr)
 
 Sys.setenv(TZ="Europe/Stockholm")
@@ -90,9 +90,10 @@ load(data.f)
 
 # load two more datasets here <- TO DO: later need to update in PART 1
 # 1. Cause of Death register with deathcause
+# Note one cause per row, therefore multiple rows per individual.
 deathcause.f <- "/Volumes/projects/S3/S3_Research/tryggve2/tryggve_psych_v_deathcause.tsv"
 
-deathcause <- fread(death.f, sep="\t") %>%
+deathcause <- fread(deathcause.f, sep="\t") %>%
   as_tibble() %>%
   rename("id"="LOPNR",
          "dod"="X_DODSDAT",
@@ -135,7 +136,7 @@ sui.a <- sui.a %>%
   group_by(id) %>%
   mutate(date.sui.attempt = first(admit.date),
          sui.attempt = sui, sui=NULL) %>%
-  slice(1) %>%
+  slice(1) %>%  # keep one record of suicide attempt per individual
   select(id, date.sui.attempt, sui.attempt)
 ```
 
@@ -174,13 +175,43 @@ rm(sui.a, sui.c)
 
 ```
 
-### Step 3: Outcome 3: Premature mortality TO DO 
-+ Mortality which occurs by age 56 years or earlier (any causes) (premature death=56 years as defined by Fazel, Lichtenstein, et al, Lancet Psychiatry 2014)
-+ Could also take life expectancy in Sweden for both males and females in 2016 (82.2 years), less 25 years (expected number of years less for someone w SCZ) = 82-25 = 57 years
+### Step 3: Outcome 3: Premature mortality
+From literature: reductions in life expectancy for depressive episode and rMD are 11 years for men and 7 years for women in UK population (Table 2, PMID: 21611123)
+Life expectancy in Sweden for both males and females in 2016 is 82.2 years (from Google or [stats sweden](https://www.scb.se/en/finding-statistics/statistics-by-subject-area/population/population-composition/population-statistics/pong/tables-and-graphs/yearly-statistics--the-whole-country/life-expectancy/))
+Thus shortened life expectancy in MDD = 82 - average shortened life expanctancy 9 = 71, round up to 70 yrs
+So here I define premature mortality which occurs by age 70 years or earlier (any causes) 
+```{r premature mortality}
+premature <- deathcause %>%
+  arrange(id, dod) %>%  # note, death 
+  mutate(death.date = ymd(dod)) %>%
+  group_by(id) %>%
+  slice(1) %>%
+  select(id,death.date)
 
-?? what is the shortened life expectancy for MDD
+premature <- inner_join(first.scz.date,premature) # inner join together with scz cases to get date of first.scz.admit
 
-...
+premature <- premature %>%
+  filter(death.date > first_scz_date) %>% # remove deaths before scz contact **i know, theoretically, impossible
+  arrange(id, death.date) %>%
+  group_by(id) %>%
+  filter(as.numeric((death.date - dob)/365.25) <= 56) %>%
+  mutate(date.outcome3 = first(death.date),
+        outcome3 = 1) %>%
+  slice(1) %>%
+  select(id, date.outcome3, outcome3)
+
+```
+
+
+
+
+
+# merge outcome 3 with original SCZ dataframe 
+
+scz <- left_join(scz, premature)
+rm(premature)
+```
+
 
 ### Check missing data in all outcomes
 ```{r missingness}
