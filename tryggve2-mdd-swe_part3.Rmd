@@ -1,0 +1,195 @@
+---
+title: "Tryggve2 - major depression - Sweden (part 3)"
+author: "Lu Yi, lu.yi@ki.se"
+date: "December 2018"
+output: 
+  html_document: 
+    fig_caption: yes
+    theme: simplex
+    highlight: zenburn
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+### Motivation and Overview
+
+NOTE: NOT RUN
+
+Examine variables associated with poor outcomes in schizophrenia, using first, the Swedish National Registers. In this report, I will present some initial coding for the analyses.
+
+**Overview**
+
+1. Import data
+2. Create a dataframe with all necessary variables including exposures and outcomes
+3. Analyses
+
+**Exposures or Predictors**
+1) Family of origin:
++ parental ages at birth ##LY
++ parental SES-education-occupation-income
++ birth order
++ family composition (number of parents/partners, parental criminality-incarceration, divorce, siblings, out-of-home placement)
+
+2) Childhood trauma: ##LY
++ parental death
++ severe medical illness of parents/sibs
+
+3) Education: done-kk
++ educational attainment
++ standardized testing in grade 9
+
+4) Prior personal medical history:
++ comorbid disorders and medication use ##kk
++ prior personal medical history (somatic disorders) #kk
++ childhood hospitalization
+
+5) Family history of psychiatric disorder ##kk
++ MD, BIP, psychosis, suicide in first-degree relatives
+
+6) Genetic risk factors  NOT NOW
++ GRS of MDD, SCZ, BIP, IQ etc.
+
+**Outcomes**
++ the number of psychiatric hospitalizations and outpatient contacts 
++ the number of somatic healthcare utilization
++ indication of 2nd or 3rd line treatments (pharmacological augmentation, ECT, TMS, DBS, clozapine) 
++ suicide or suicide attempt
+
+**TO DOs**
+
+cut down this doc into 4 separate RMD (eventually):
+outcome
+exposure/risk factors
+basics
+analysis
+
+***
+
+### Step 0: Load R packages
+```{r R packages}
+library(tidyverse)
+#library(dplyr)
+library(data.table)
+#library(ggplot2)
+library(lubridate)
+library(stringr)
+library(skimr)
+
+Sys.setenv(TZ="Europe/Stockholm")
+```
+
+### Step 1: Load data
+REQUIRE EDITING on the file path
+```{r specify file path}
+# edit the file path where you have stored the part 1 data
+data.f <- "/Users/luyi/CloudStation/WORK_2018/MyProjects_with_Pat/GAPS_MDD/DATA/FREED/DATA/mdd.part2.RData"
+
+# load the R data
+load(data.f) 
+
+# load two more datasets here <- TO DO: later need to update in PART 1
+# 1. Cause of Death register with deathcause
+deathcause.f <- "/Volumes/projects/S3/S3_Research/tryggve2/tryggve_psych_v_deathcause.tsv"
+
+deathcause <- fread(death.f, sep="\t") %>%
+  as_tibble() %>%
+  rename("id"="LOPNR",
+         "dod"="X_DODSDAT",
+         "icd.version"="ICD_NR",
+         "death.cause"="CAUSE",
+         "death.cause.nr"="CAUSENR")
+
+# 2. suicide attempts identified through NPR 
+sui.attempt.f <- "/Volumes/projects/S3/S3_Research/tryggve2/tryggve_psych_v_npr_sui.tsv"
+
+sui.attempt <- fread(sui.attempt.f, sep="\t") %>%
+  as_tibble() %>%
+  rename("id"="LOPNR",
+         "admit.date"="DATUM", # date of admission
+         "inpatient"="SOURCE", # inpatient (1) or outpatient (2)
+         "icd.version"="ICD", # ICD version - 8, 9 or 10
+         "diagnosis"="DIA", # ICD diagnostic code
+         "dx.code.num"="X_DID") %>% # primary vs. other ICD dx codes, i.e. H01 = primary, all others = secondary 
+  mutate(inpatient = ifelse(inpatient == 2, 0, 1)) #recode such that inpatient == 1 and outpatient == 0
+
+```
+
+### Step 2: Outcome 1 & 2: Suicide - attempts or completed
+Suicide attempt must have occurred after the first MDD date and only need first one (for now)
+```{r suicide attempt}
+# attempts from hospital discharge register
+sui.a <- sui.attempt %>%
+   filter((icd.version==8 & grepl("^E950|^E951|^E952$|^E9520|^E9521|^E9529|^E953|^E954|^E955|^E956|^E957|^E958|^E959", diagnosis))
+      | (icd.version==9 & grepl("^E95A|^E95B|^E95C|^E95D|^E95E|^E95F|^E95G|^E95H|^E95W|^E95X", diagnosis))
+      | (icd.version==10 & grepl("^X60|^X61|^X62|^X63|^X64|^X65|^X66|^X67|^X68|^X69|^X70|^X71|^X72|^X73|^X74|^X75|^X76|^X77|^X78|^X79|^X80|^X81|X82|^X83|^X84", diagnosis)) ) %>%
+  mutate(sui = 1,
+         admit.date = ymd(admit.date)) %>%
+  arrange(id, admit.date)
+
+sui.a <- inner_join(first.mdd.date,sui.a, by="id") # inner join together with mdd cases to get date of first.mdd.admit
+
+sui.a <- sui.a %>%
+  filter(admit.date > first_mdd_date) %>% # remove sui attempts before mdd contact   
+  arrange(id, admit.date) %>%
+  group_by(id) %>%
+  mutate(date.sui.attempt = first(admit.date),
+         sui.attempt = sui, sui=NULL) %>%
+  slice(1) %>%
+  select(id, date.sui.attempt, sui.attempt)
+```
+
+```{r completed suicide}
+# completed suicide from cause of death register
+sui.c <- deathcause %>%
+   filter((icd.version==8 & grepl("^E950|^E951|^E952$|^E9520|^E9521|^E9529|^E953|^E954|^E955|^E956|^E957|^E958|^E959", death.cause))
+      | (icd.version==9 & grepl("^E95A|^E95B|^E95C|^E95D|^E95E|^E95F|^E95G|^E95H|^E95W|^E95X", death.cause))
+      | (icd.version==10 & grepl("^X60|^X61|^X62|^X63|^X64|^X65|^X66|^X67|^X68|^X69|^X70|^X71|^X72|^X73|^X74|^X75|^X76|^X77|^X78|^X79|^X80|^X81|X82|^X83|^X84", death.cause)) ) %>%
+  mutate(sui.death = 1,
+         death.date = ymd(dod)) %>%
+  arrange(id, death.date)
+
+sui.c <- inner_join(first.mdd.date,sui.c, by="id") # inner join together with mdd cases to get date of first.mdd.admit
+
+sui.c <- sui.c %>%
+  filter(death.date > first_mdd_date) %>% # remove sui death before mdd contact **there are a few samples, mdd_date same as death date
+  arrange(id, death.date) %>%
+  group_by(id) %>%
+  mutate(date.sui.death = first(death.date)) %>%
+  slice(1) %>%
+  select(id, date.sui.death, sui.death)
+
+```
+
+```{r merge suicide data with MDD ind}
+
+# merge suicide attempt and completed suicide with original mdd dataframe
+
+mdd.perind <- left_join(mdd.perind, sui.a, by="id")
+mdd.perind <- left_join(mdd.perind, sui.c, by="id")
+
+# also wanted derive a variable indicating whether had any suicide attempt or completed suicide
+
+rm(sui.a, sui.c)
+
+```
+
+### Step 3: Outcome 3: Premature mortality TO DO 
++ Mortality which occurs by age 56 years or earlier (any causes) (premature death=56 years as defined by Fazel, Lichtenstein, et al, Lancet Psychiatry 2014)
++ Could also take life expectancy in Sweden for both males and females in 2016 (82.2 years), less 25 years (expected number of years less for someone w SCZ) = 82-25 = 57 years
+
+?? what is the shortened life expectancy for MDD
+
+...
+
+### Check missing data in all outcomes
+```{r missingness}
+# check missing data on each variable
+mdd.perind %>% purrr::map_df(~ sum(is.na(.))) %>% gather(variable, N_missing)
+
+```
+
+### SAVE ALL THE DATA 
+```{r save data}
+save.image(file = "/Users/luyi/CloudStation/WORK_2018/MyProjects_with_Pat/GAPS_MDD/DATA/FREED/DATA/mdd.part2.RData",compress = TRUE)
+```
