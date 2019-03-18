@@ -131,7 +131,7 @@ sui.a <- sui.attempt %>%
 sui.a <- inner_join(first.mdd.date,sui.a, by="id") # inner join together with mdd cases to get date of first.mdd.admit
 
 sui.a <- sui.a %>%
-  filter(admit.date > first_mdd_date) %>% # remove sui attempts before mdd contact   
+  filter(admit.date >= first_mdd_date) %>% # remove sui attempts before mdd contact   
   arrange(id, admit.date) %>%
   group_by(id) %>%
   mutate(date.sui.attempt = first(admit.date),
@@ -153,7 +153,7 @@ sui.c <- deathcause %>%
 sui.c <- inner_join(first.mdd.date,sui.c, by="id") # inner join together with mdd cases to get date of first.mdd.admit
 
 sui.c <- sui.c %>%
-  filter(death.date > first_mdd_date) %>% # remove sui death before mdd contact **there are a few samples, mdd_date same as death date
+  filter(death.date >= first_mdd_date) %>% # remove sui death before mdd contact **there are a few samples, mdd_date same as death date
   arrange(id, death.date) %>%
   group_by(id) %>%
   mutate(date.sui.death = first(death.date)) %>%
@@ -177,40 +177,101 @@ rm(sui.a, sui.c)
 
 ### Step 3: Outcome 3: Premature mortality
 From literature: reductions in life expectancy for depressive episode and rMD are 11 years for men and 7 years for women in UK population (Table 2, PMID: 21611123)
-Life expectancy in Sweden for both males and females in 2016 is 82.2 years (from Google or [stats sweden](https://www.scb.se/en/finding-statistics/statistics-by-subject-area/population/population-composition/population-statistics/pong/tables-and-graphs/yearly-statistics--the-whole-country/life-expectancy/))
-Thus shortened life expectancy in MDD = 82 - average shortened life expanctancy 9 = 71, round up to 70 yrs
-So here I define premature mortality which occurs by age 70 years or earlier (any causes) 
+Life expectancies in Sweden are 81 years for males and 84 for females (from [stats sweden 2017 data](https://www.scb.se/en/finding-statistics/statistics-by-subject-area/population/population-composition/population-statistics/pong/tables-and-graphs/yearly-statistics--the-whole-country/life-expectancy/))
+Thus shortened life expectancy in MDD = 81 - 11 = 70 for males and = 84 - 7 = 77 for females 
+Note, mean age in this MDD cohort are very similar to the above estimates: 70 for males (median 73) and 76 for females (median 80) - see below
+So here I define premature mortality which occurs by age 70 years or earlier (any causes, *INCLUDING suicide*) 
 ```{r premature mortality}
-premature <- deathcause %>%
-  arrange(id, dod) %>%  # note, death 
+
+# check mean age in this MDD cohort 
+mdd.perind %>% group_by(sex) %>% summarise(mean(age.death, na.rm=T), median(age.death, na.rm=T))
+
+# first extract all death data 
+allcausedeath <- deathcause %>%
+  arrange(id, dod) %>%  # remember can have multiple rows per person
   mutate(death.date = ymd(dod)) %>%
   group_by(id) %>%
-  slice(1) %>%
+  slice(1) %>%  # here, only grab the first row to have the unique person ID
   select(id,death.date)
 
-premature <- inner_join(first.scz.date,premature) # inner join together with scz cases to get date of first.scz.admit
+# find out how many mdd patients died 
+allcausedeath.mdd <- inner_join(first.mdd.date,allcausedeath) # inner join together with mdd cases to get date of death
 
-premature <- premature %>%
-  filter(death.date > first_scz_date) %>% # remove deaths before scz contact **i know, theoretically, impossible
+# find out who had premature death
+prem.death <- allcausedeath.mdd %>%
+  filter(death.date >= first_mdd_date) %>% # remove deaths before mdd contact **i know, theoretically, impossible, but there are a few...
   arrange(id, death.date) %>%
-  group_by(id) %>%
-  filter(as.numeric((death.date - dob)/365.25) <= 56) %>%
-  mutate(date.outcome3 = first(death.date),
-        outcome3 = 1) %>%
-  slice(1) %>%
-  select(id, date.outcome3, outcome3)
+#  group_by(id) %>%   # all distinct IDs
+  filter(as.numeric((death.date - dob)/365.25) <= 70) %>%  # apply filter on premature death, defined as died before age 70 
+  mutate(date.prem.death = first(death.date),
+        prem.death = 1) %>%
+#  slice(1) %>%
+  select(id, date.prem.death, prem.death)
 
 ```
 
+```{r merge premature death with mdd ind}
+# merge premature death data with original mdd dataframe 
 
-
-
-
-# merge outcome 3 with original SCZ dataframe 
-
-scz <- left_join(scz, premature)
-rm(premature)
+mdd.perind <- left_join(mdd.perind, prem.death, by="id")
+rm(prem.death)
 ```
+
+### Step 4: Outcome 4: Hospitalisations for MDD
+Literature: most depression, over 80%, is treated ONLY at PCR. Among the remaining 20% who were also treated in the specialist care, ONLY 6% were hospitalised. (PMID: 28666429)
+So hopitalisation is very uncommon in MDD. 
+And hopsitalisation for MDD are mostly due to self-harm or suicide, or psychosis or mania, inability to function, treatment only given at hospital eg ECT.
+Usually only brief hopsitalisation too. 
+
+So, here I will simply look at the number of hospitalisation, instead of the length of hospitalisation. 
+```{r hospitalisation}
+# check the mean and median of hopsitalisation in MDD individuals
+mdd.perind %>% skim(nmddinpt)
+# as opposed to the outpatient treatment 
+mdd.perind %>% skim(nmddoutpt)
+
+# So the mean is 1.8 and meadian is 1 hospitalisation 
+# I will just use 2 (75th percentile) as the cutoff for now
+# N.B. will restrict on *hospitalisation due to MDD* (inpatient == 1 & dx.code.num == "H01" & all MDD ICD codes)
+# This can be improved by restricting hospitalisation longer than X days 
+
+# need to record the admit date of the 2nd hopsitalisation 
+hospitalisation <- hdr %>%  # start from NPR data 
+  filter( (icd.version==8 & grepl("^2960|^3004", diagnosis)) |
+          (icd.version==9 & grepl("^296B|^311", diagnosis)) |
+          (icd.version==10 & grepl("^F32|^F320|^F321|^F322|^F323|^F328|^F329|^F33|^F330|^F331|^F332|^F333|^F334|^F338|^F339", diagnosis)) ) %>% # extract all MDD dx codes
+  filter(inpatient == 1 & dx.code.num == "H01") %>% # restrict hospitalisation due to MDD
+  mutate(mdd_date = ymd(admit.date)) %>% # turn the date (character now) into R date object
+  arrange(id, mdd_date) %>% # sort by ID, and dx date
+  group_by(id) %>%  # group by ID
+  mutate(first_hosp_date = first(mdd_date),  # record the date of first hospitalisation
+         second_hosp_date = nth(mdd_date, 2)) %>%  # record the date of second hospitalisation
+  slice(1) %>% # take first record per-person
+  ungroup() %>% # ungroup by ID
+  filter(!is.na(second_hosp_date)) %>% # select the ones with 2+ hospitalisation
+  mutate(hosp.2x = 1) %>% # indicator of 2+ hospitalisation
+  select(id, second_hosp_date, hosp.2x)
+
+```
+
+```{r merge hopsitalisation with mdd ind}
+# merge hospitalisation data with original mdd dataframe 
+
+mdd.perind <- left_join(mdd.perind, hospitalisation, by="id")
+rm(hospitalisation)
+```
+
+### Step 5: Outcome 5: Tx-resistance for MDD -> SKIP FOR NOW
+Idea: use ECT as proxy
+ECT use NOT in CRIME3 data yet -> SKIP FOR NOW
+
+### Step 6: Outcome 6: Hospitalisation for somatic disease -> SKIP FOR NOW
+
+### Step 7: Outcome 7: income support
+### Step 8: Outcome 8: sickness pension
+### Step 9: Outcome 9: divorce
+
+### Outcome 10: early retirement???
 
 
 ### Check missing data in all outcomes
