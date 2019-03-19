@@ -52,58 +52,8 @@ studypop <- scz %>%
            birthyear %in% c(1958:1993) &
            case.exclu == 0)
 
-# need a variable indicating which outcome was first reached & time to reach 
-# need to reshape data such that each individual has multiple rows
-# outcomes dataframe
-# focus on outcomes #1-5 (clinically relevant for now)
-
-## outcome 1 = suicide attempt or completed
-suicide <- studypop %>%
-  select(-date.outcome3:-outcome9) %>% 
-  #removed outcome6-CVD, outcome8=sicknesspension, outcome9-divorce, outcome7-income support-for now
-  arrange(id) %>%
-  mutate(end.follow = ymd("2014-12-31")) %>%
-  gather("date.outcome1","date.outcome2", "dod",
-         "first.emigrate.date","end.follow",
-         key = "outcome",
-         value = "date") %>%
-  select(id, outcome1:date, scz:z_edlevel) %>%
-  arrange(id,date) %>%
-  group_by(id) %>%
-  mutate(date.outcome.reached = first(date)) %>%
-#  select(id, date.outcome.reached, outcome1:outcome2,outcome:first_scz_date) %>%
-  slice(1) 
-
-suicide <- suicide %>%
-  mutate(time = as.numeric(date - first_scz_date)/365.25) %>% # calculate time 
-  filter(time >= 0) # remove people who emigrated before reached outcome
-
-suicide$outcome <- as.factor(suicide$outcome)
-
-suicide <- suicide %>%
-  mutate(outcome_di = ifelse(outcome!="end.follow" & outcome!="dod" &
-                            outcome!="first.emigrate.date", 1, 0),
-         outcome_cat = case_when(outcome=="date.outcome1"~"suicide.attempt",
-                             outcome=="date.outcome2"~"suicide.complete",
-                            # outcome=="date.outcome3"~"premature.mortality",
-                            # outcome=="date.outcome4"~"hospitalised.100days",
-                            # outcome=="date.outcome5"~"clozapine.prescrip",
-                            # outcome=="date.outcome7"~"income.support",
-                            # outcome=="date.outcome9"~"divorce",             
-                             outcome=="dod"~"died(not premature)",
-                             outcome=="end.follow"~"end.of.follow",
-                             outcome=="first.emigrate.date"~"emigrated",
-                             TRUE ~ NA_character_)
-  ) %>%
-  select(id, date.outcome.reached, time,outcome_di,outcome_cat) %>%
-  rename("fu.time"="time")
-#rm outcome=="date.outcome8"~"sickness.pension",
-
-# merge back w exposures
-analysis <- left_join(suicide,scz)
-
 #CATEGORICAL VARIABLES - combine psych variables
-analysis <- analysis %>%
+studypop <- studypop %>%
   mutate(psych_childhood = case_when(bip.childhood == 1 |
                                        anx.childhood == 1 |
                                        ptsd.childhood == 1 |
@@ -126,7 +76,7 @@ analysis <- analysis %>%
                                        mdd.childhood == 0 ~ 0,
                                      TRUE ~ 0))
 
-analysis <- analysis %>%
+studypop <- studypop %>%
   mutate(psych_pre.scz = case_when(bip.pre.scz == 1 |
                                      anx.pre.scz == 1 |
                                      ptsd.pre.scz == 1 |
@@ -149,7 +99,7 @@ analysis <- analysis %>%
                                      mdd.pre.scz == 0 ~ 0,
                                    TRUE ~ 0))
 
-analysis <- analysis %>%
+studypop <- studypop %>%
   mutate(psych_fhx = case_when(fhx.scz == 1 |
                                  fhx.bp == 1 |
                                  fhx.anx == 1 |
@@ -175,6 +125,187 @@ analysis <- analysis %>%
                                TRUE ~ 0)
   )
 ```
+### Step 2: Derive outcomes for analysis
+need a variable indicating which outcome was first reached & time to reach 
+need to reshape data such that each individual has multiple rows outcomes dataframe
+focus on outcomes #1-5 (clinically relevant for now)
+
+```{r}
+## outcome 1 = suicide attempt or completed
+suicide <- studypop %>%
+  select(-date.outcome3:-outcome9) %>% 
+  #removed outcome6-CVD, outcome8=sicknesspension, outcome9-divorce, outcome7-income support-for now
+  arrange(id) %>%
+  mutate(end.follow = ymd("2014-12-31")) %>%
+  gather("date.outcome1","date.outcome2", "dod",
+         "first.emigrate.date","end.follow",
+         key = "outcome",
+         value = "date") %>%
+  select(id, outcome1:date, scz:z_edlevel) %>%
+  arrange(id,date) %>%
+  group_by(id) %>%
+  mutate(date.sui.reached = first(date)) %>%
+#  select(id, date.outcome.reached, outcome1:outcome2,outcome:first_scz_date) %>%
+  slice(1) %>%
+  mutate(time_sui = as.numeric(date.sui.reached - first_scz_date)/365.25) %>% # calculate time 
+  filter(time_sui >= 0) # remove people who emigrated before reached outcome
+
+suicide$outcome <- as.factor(suicide$outcome)
+
+suicide <- suicide %>%
+  mutate(suicide_yn = ifelse(outcome!="end.follow" & outcome!="dod" &
+                            outcome!="first.emigrate.date", 1, 0),
+         suicide_yn_cat = case_when(outcome=="date.outcome1"~"suicide.attempt",
+                             outcome=="date.outcome2"~"suicide.complete",
+                            # outcome=="date.outcome3"~"premature.mortality",
+                            # outcome=="date.outcome4"~"hospitalised.100days",
+                            # outcome=="date.outcome5"~"clozapine.prescrip",
+                            # outcome=="date.outcome7"~"income.support",
+                            # outcome=="date.outcome9"~"divorce",             
+                             outcome=="dod"~"died(not premature)",
+                             outcome=="end.follow"~"end.of.follow",
+                             outcome=="first.emigrate.date"~"emigrated",
+                             TRUE ~ NA_character_)
+  ) %>%
+  select(id,date.sui.reached,time_sui,suicide_yn,suicide_yn_cat)
+
+# merge back w exposures
+analysis <- left_join(suicide,studypop)
+```
+
+### Step 2a: Derive individual outcomes for analysis (premature mortality)
+```{r}
+## outcome 2 = premature.mortality
+pdeath <- studypop %>%
+  select(-date.outcome4:-outcome9) %>% 
+  #removed outcome6-CVD, outcome8=sicknesspension, outcome9-divorce, outcome7-income support-for now
+  arrange(id) %>%
+  mutate(end.follow = ymd("2014-12-31")) %>%
+  gather("date.outcome3", "dod",
+         "first.emigrate.date","end.follow",
+         key = "outcome",
+         value = "date") %>%
+  select(id, outcome3:date, scz:z_edlevel) %>%
+  arrange(id,date) %>%
+  group_by(id) %>%
+  mutate(date.pd.reached = first(date)) %>%
+#  select(id, date.outcome.reached, outcome1:outcome2,outcome:first_scz_date) %>%
+  slice(1) %>%
+  mutate(time_pd = as.numeric(date.pd.reached - first_scz_date)/365.25) %>% # calculate time 
+  filter(time_pd >= 0) # remove people who emigrated before reached outcome
+
+pdeath$outcome <- as.factor(pdeath$outcome)
+
+pdeath <- pdeath %>%
+  mutate(pd_yn = ifelse(outcome!="end.follow" & outcome!="dod" &
+                            outcome!="first.emigrate.date", 1, 0),
+         pd_yn_cat = case_when(#outcome=="date.outcome1"~"suicide.attempt",
+                            # outcome=="date.outcome2"~"suicide.complete",
+                             outcome=="date.outcome3"~"premature.mortality",
+                            # outcome=="date.outcome4"~"hospitalised.100days",
+                            # outcome=="date.outcome5"~"clozapine.prescrip",
+                            # outcome=="date.outcome7"~"income.support",
+                            # outcome=="date.outcome9"~"divorce",             
+                             outcome=="dod"~"died(not premature)",
+                             outcome=="end.follow"~"end.of.follow",
+                             outcome=="first.emigrate.date"~"emigrated",
+                             TRUE ~ NA_character_)
+  ) %>%
+  select(id,date.pd.reached,time_pd,pd_yn,pd_yn_cat)
+
+# merge back w exposures
+analysis <- left_join(pdeath,analysis)
+```
+
+### Step 2b: Derive individual outcomes for analysis (hospitalised 100 days)
+```{r}
+## outcome 4= hospitalised.100days
+hsp <- studypop %>%
+  select(-date.outcome5:-outcome9) %>% 
+  #removed outcome6-CVD, outcome8=sicknesspension, outcome9-divorce, outcome7-income support-for now
+  arrange(id) %>%
+  mutate(end.follow = ymd("2014-12-31")) %>%
+  gather("date.outcome4", "dod",
+         "first.emigrate.date","end.follow",
+         key = "outcome",
+         value = "date") %>%
+  select(id, outcome4:date, scz:z_edlevel) %>%
+  arrange(id,date) %>%
+  group_by(id) %>%
+  mutate(date.hsp.reached = first(date)) %>%
+#  select(id, date.outcome.reached, outcome1:outcome2,outcome:first_scz_date) %>%
+  slice(1) %>%
+  mutate(time_hsp = as.numeric(date.hsp.reached - first_scz_date)/365.25) %>% # calculate time 
+  filter(time_hsp >= 0) # remove people who emigrated before reached outcome
+
+hsp$outcome <- as.factor(hsp$outcome)
+
+hsp <- hsp %>%
+  mutate(hsp_yn = ifelse(outcome!="end.follow" & outcome!="dod" &
+                            outcome!="first.emigrate.date", 1, 0),
+         hsp_yn_cat = case_when(#outcome=="date.outcome1"~"suicide.attempt",
+                            # outcome=="date.outcome2"~"suicide.complete",
+                             #outcome=="date.outcome3"~"premature.mortality",
+                            outcome=="date.outcome4"~"hospitalised.100days",
+                            # outcome=="date.outcome5"~"clozapine.prescrip",
+                            # outcome=="date.outcome7"~"income.support",
+                            # outcome=="date.outcome9"~"divorce",             
+                             outcome=="dod"~"died(not premature)",
+                             outcome=="end.follow"~"end.of.follow",
+                             outcome=="first.emigrate.date"~"emigrated",
+                             TRUE ~ NA_character_)
+  ) %>%
+  select(id,date.hsp.reached,time_hsp,hsp_yn,hsp_yn_cat)
+
+# merge back w exposures
+analysis <- left_join(hsp,analysis)
+```
+### Step 2c: Derive individual outcomes for analysis (clozapine.prescrip)
+```{r}
+## outcome 5= clozapine.prescrip
+trs <- studypop %>%
+  select(-date.outcome6:-outcome9) %>% 
+  #removed outcome6-CVD, outcome8=sicknesspension, outcome9-divorce, outcome7-income support-for now
+  arrange(id) %>%
+  mutate(end.follow = ymd("2014-12-31")) %>%
+  gather("date.outcome5", "dod",
+         "first.emigrate.date","end.follow",
+         key = "outcome",
+         value = "date") %>%
+  select(id, outcome5:date, scz:z_edlevel) %>%
+  arrange(id,date) %>%
+  group_by(id) %>%
+  mutate(date.trs.reached = first(date)) %>%
+#  select(id, date.outcome.reached, outcome1:outcome2,outcome:first_scz_date) %>%
+  slice(1) %>%
+  mutate(time_trs = as.numeric(date.trs.reached - first_scz_date)/365.25) %>% # calculate time 
+  filter(time_trs >= 0) # remove people who emigrated before reached outcome
+
+trs$outcome <- as.factor(trs$outcome)
+
+trs <- trs %>%
+  mutate(trs_yn = ifelse(outcome!="end.follow" & outcome!="dod" &
+                            outcome!="first.emigrate.date", 1, 0),
+         trs_yn_cat = case_when(#outcome=="date.outcome1"~"suicide.attempt",
+                            # outcome=="date.outcome2"~"suicide.complete",
+                             #outcome=="date.outcome3"~"premature.mortality",
+                            #outcome=="date.outcome4"~"hospitalised.100days",
+                             outcome=="date.outcome5"~"clozapine.prescrip",
+                            # outcome=="date.outcome7"~"income.support",
+                            # outcome=="date.outcome9"~"divorce",             
+                             outcome=="dod"~"died(not premature)",
+                             outcome=="end.follow"~"end.of.follow",
+                             outcome=="first.emigrate.date"~"emigrated",
+                             TRUE ~ NA_character_)
+  ) %>%
+  select(id,date.trs.reached,time_trs,trs_yn,trs_yn_cat)
+
+# merge back w exposures
+analysis <- left_join(trs,analysis)
+
+```
+
+
 ### Step 2: Descriptive tables
 ```{r}
         
@@ -463,10 +594,6 @@ df <- outcomes %>%
   mutate(percent = (n/13561)*100) %>%
   arrange(desc(n))
 
-# merge df
-
-analysis <- left_join(analysis,suicide, by="id")
-
 ```
 ### Step 3: Logistic regression
 ```{r}
@@ -531,28 +658,22 @@ predict.list <- c("age.first.scz", "bip.pre.scz", "anx.pre.scz", "adhd.pre.scz",
 stepmodel <- My.stepwise.coxph(Time = "fu.time", Status = "outcome_di", variable.list = predict.list, data=sub)
 ```
 
-```{r save data}
-save.image(file = "../DATA/scz.part1.RData",compress = TRUE)
-```
 ### Step X: Alternate Cox regression
 ```{r}
-
-
 analysis <- analysis %>%
   mutate(fhx.scz=ifelse(is.na(fhx.scz),0,fhx.scz))
-
-summary(coxph(Surv(fu.time, outcome_di) ~ sex , data=analysis))$conf.int -> row1 
-summary(coxph(Surv(fu.time, outcome_di) ~ age.first.scz , data=analysis))$conf.int -> row2 
-summary(coxph(Surv(fu.time, outcome_di) ~ infect.pre.scz, data=analysis))$conf.int -> row3
-
-summary(coxph(Surv(fu.time, outcome_di) ~ psych_pre.scz , data=analysis))$conf.int -> row4
-
-#summary(coxph(Surv(fu.time, outcome_di) ~ std.grade, data=analysis))$conf.int -> row5
-summary(coxph(Surv(fu.time, outcome_di) ~ z_edlevel, data=analysis))$conf.int -> row6
-
-summary(coxph(Surv(fu.time, outcome_di) ~ fhx.scz, data=analysis))$conf.int -> row7
-summary(coxph(Surv(fu.time, outcome_di) ~ paternal_age, data=analysis))$conf.int -> row8
-summary(coxph(Surv(fu.time, outcome_di) ~ maternal_age, data=analysis))$conf.int -> row9
+analysis <- analysis %>%
+  mutate(sex = ifelse(sex==1, "M", "F"))
+analysis$sex <- as.factor(analysis$sex)
+# Suicides
+summary(coxph(Surv(time_sui, suicide_yn) ~ sex, data=analysis))$conf.int -> row1 
+summary(coxph(Surv(time_sui, suicide_yn) ~ age.first.scz, data=analysis))$conf.int -> row2 
+summary(coxph(Surv(time_sui, suicide_yn) ~ infect.pre.scz, data=analysis))$conf.int -> row3
+summary(coxph(Surv(time_sui, suicide_yn) ~ psych_pre.scz, data=analysis))$conf.int -> row4
+summary(coxph(Surv(time_sui, suicide_yn) ~ z_edlevel, data=analysis))$conf.int -> row6
+summary(coxph(Surv(time_sui, suicide_yn) ~ fhx.scz, data=analysis))$conf.int -> row7
+summary(coxph(Surv(time_sui, suicide_yn) ~ paternal_age, data=analysis))$conf.int -> row8
+summary(coxph(Surv(time_sui, suicide_yn) ~ maternal_age, data=analysis))$conf.int -> row9
 
 rbind(row1,row2,row3,row4,row6,row7,row8,row9) -> cox.univ  
 
@@ -562,9 +683,7 @@ cox.unadj <- as_tibble(cox.univ) %>%
   select(-HR_neg)
   
 # Cox regression - adjusted
-
-
-cox.multi <- summary(coxph(Surv(fu.time, outcome_di) ~ 
+cox.multi <- summary(coxph(Surv(time_sui, suicide_yn) ~ 
                              sex + age.first.scz + infect.pre.scz +
                              psych_pre.scz + z_edlevel + paternal_age + maternal_age +
                fhx.scz, data=analysis))$conf.int
@@ -581,30 +700,15 @@ res <- rbind(cox.unadj, cox.adj)
                   
 res$predictors <- factor(res$predictors, levels=rev(c("age.first.scz",
                                                   "sexM",
-                                                      "psych_pre.scz",
+                                                  "psych_pre.scz",
                                                   "infect.pre.scz",
                                                   "fhx.scz",
-                                                  #"std.grade",
                                                   "z_edlevel",
                                                   "maternal_age",
                                                   "paternal_age")))
 
-# put both unadjusted and adjusted estimates, color coded, into one figure
-fig <- ggplot(data=res) +
-        geom_pointrange(aes(x=predictors, y=HR, ymin=HR_95L, ymax=HR_95H,color=as.factor(adj)), position=position_dodge(width = 0.6)) + 
-        geom_hline(yintercept=1, lty=3) +  # add a dotted line at x=1 after flip
-        coord_flip() +  # flip coordinates (puts labels on y axis)
-        labs(title = "Predictors of suicide or attempt in SCZ (multiv n=11915, event=1293) ",
-        x="", y="Hazard Ratio (95% CI)") +
-        theme_bw() + 
-  scale_colour_manual("", labels = c("unadj","adj"), values = 1:2)  
-
-ggsave(file="/Users/luyi/CloudStation/WORK_2018/MyProjects_with_Pat/GAPS_MDD/DATA/FREED/fig_sui.png",fig, width=8, height=6)
-
-
-
 # put both unadjusted and adjusted estimates into facets, side by side
-labels <- c(`0` = "unadjusted (N=13806)", `1` = "adjusted (N=11915, event=1293)")
+labels <- c(`0` = "unadjusted (N=13561)", `1` = "adjusted (N=11679, event=1265)")
 
 fig2 <-ggplot(data=res) + # take away sex for now
         geom_pointrange(aes(x=predictors, y=HR, ymin=HR_95L, ymax=HR_95H, col=as.factor(adj))) +
@@ -615,10 +719,185 @@ fig2 <-ggplot(data=res) + # take away sex for now
         x="", y="Hazard Ratio (95% CI)") +
         theme_bw() +theme(legend.position="none")
 
-# + scale_colour_manual("", labels = c("unadj","adj"), values = 1:2)  
-
-
 ggsave(file="~/Documents/projects/5.tryggve2/tryggve2/paper1/fig_sui2_18mar19.png",fig2, width=8, height=6)
 
-```
 
+```
+### Outcome 2-premature mortality
+```{r}
+summary(coxph(Surv(time_pd, pd_yn) ~ sex, data=analysis))$conf.int -> row1 
+summary(coxph(Surv(time_pd, pd_yn) ~ age.first.scz, data=analysis))$conf.int -> row2 
+summary(coxph(Surv(time_pd, pd_yn) ~ infect.pre.scz, data=analysis))$conf.int -> row3
+summary(coxph(Surv(time_pd, pd_yn) ~ psych_pre.scz, data=analysis))$conf.int -> row4
+#summary(coxph(Surv(time_pd, pd_yn) ~ z_edlevel, data=analysis))$conf.int -> row6
+summary(coxph(Surv(time_pd, pd_yn) ~ fhx.scz, data=analysis))$conf.int -> row7
+summary(coxph(Surv(time_pd, pd_yn) ~ paternal_age, data=analysis))$conf.int -> row8
+summary(coxph(Surv(time_pd, pd_yn) ~ maternal_age, data=analysis))$conf.int -> row9
+
+rbind(row1,row2,row3,row4,row7,row8,row9) -> cox.univ  
+#row6
+cox.unadj <- as_tibble(cox.univ) %>% 
+  mutate(predictors=row.names(cox.univ), adj=0)  %>%
+  rename("HR"="exp(coef)", "HR_neg"="exp(-coef)", "HR_95L"="lower .95", "HR_95H"="upper .95") %>% 
+  select(-HR_neg)
+
+# Cox regression - adjusted
+cox.multi <- summary(coxph(Surv(time_pd, pd_yn) ~ 
+                             sex + age.first.scz + infect.pre.scz +
+                             psych_pre.scz + paternal_age + maternal_age +
+                             fhx.scz, data=analysis))$conf.int
+#z_edlevel 
+cox.adj <- as_tibble(cox.multi) %>% 
+  mutate(predictors=row.names(cox.multi), adj=1)  %>%
+  rename("HR"="exp(coef)", "HR_neg"="exp(-coef)", "HR_95L"="lower .95", "HR_95H"="upper .95") %>% 
+  select(-HR_neg)
+
+res <- rbind(cox.unadj, cox.adj)
+
+# plot OR and 95%CI
+# Create labels for plot
+
+res$predictors <- factor(res$predictors, levels=rev(c("age.first.scz",
+                                                      "sexM",
+                                                      "psych_pre.scz",
+                                                      "infect.pre.scz",
+                                                      "fhx.scz",
+                                                     # "z_edlevel",
+                                                      "maternal_age",
+                                                      "paternal_age")))
+
+# put both unadjusted and adjusted estimates into facets, side by side
+labels <- c(`0` = "unadjusted (N=13561)", `1` = "adjusted (N=13094, event=1176)")
+
+fig2 <-ggplot(data=res) + # take away sex for now
+  geom_pointrange(aes(x=predictors, y=HR, ymin=HR_95L, ymax=HR_95H, col=as.factor(adj))) +
+  facet_grid(cols = vars(adj), labeller = labeller(adj=labels)) + 
+  geom_hline(yintercept=1, lty=3) +  # add a dotted line at x=1 after flip
+  coord_flip() +  # flip coordinates (puts labels on y axis)
+  labs(title = "Predictors of premature mortality in SCZ (birth cohort: 1958 to 1993)",
+       x="", y="Hazard Ratio (95% CI)") +
+  theme_bw() +theme(legend.position="none")
+
+ggsave(file="~/Documents/projects/5.tryggve2/tryggve2/paper1/fig_prematuremort_18mar19.png",fig2, width=8, height=6)
+
+
+```
+### Outcome 3-long hospitalisation
+```{r}
+summary(coxph(Surv(time_hsp, hsp_yn) ~ sex, data=analysis))$conf.int -> row1 
+summary(coxph(Surv(time_hsp, hsp_yn) ~ age.first.scz, data=analysis))$conf.int -> row2 
+summary(coxph(Surv(time_hsp, hsp_yn) ~ infect.pre.scz, data=analysis))$conf.int -> row3
+summary(coxph(Surv(time_hsp, hsp_yn) ~ psych_pre.scz, data=analysis))$conf.int -> row4
+summary(coxph(Surv(time_hsp, hsp_yn) ~ z_edlevel, data=analysis))$conf.int -> row6
+summary(coxph(Surv(time_hsp, hsp_yn) ~ fhx.scz, data=analysis))$conf.int -> row7
+summary(coxph(Surv(time_hsp, hsp_yn) ~ paternal_age, data=analysis))$conf.int -> row8
+summary(coxph(Surv(time_hsp, hsp_yn) ~ maternal_age, data=analysis))$conf.int -> row9
+
+rbind(row1,row2,row3,row4,row6, row7,row8,row9) -> cox.univ  
+
+cox.unadj <- as_tibble(cox.univ) %>% 
+  mutate(predictors=row.names(cox.univ), adj=0)  %>%
+  rename("HR"="exp(coef)", "HR_neg"="exp(-coef)", "HR_95L"="lower .95", "HR_95H"="upper .95") %>% 
+  select(-HR_neg)
+
+# Cox regression - adjusted
+cox.multi <- summary(coxph(Surv(time_hsp, hsp_yn) ~ 
+                             sex + age.first.scz + infect.pre.scz +
+                             psych_pre.scz + z_edlevel + paternal_age + maternal_age +
+                             fhx.scz, data=analysis))$conf.int
+#z_edlevel 
+cox.adj <- as_tibble(cox.multi) %>% 
+  mutate(predictors=row.names(cox.multi), adj=1)  %>%
+  rename("HR"="exp(coef)", "HR_neg"="exp(-coef)", "HR_95L"="lower .95", "HR_95H"="upper .95") %>% 
+  select(-HR_neg)
+
+res <- rbind(cox.unadj, cox.adj)
+
+# plot OR and 95%CI
+# Create labels for plot
+
+res$predictors <- factor(res$predictors, levels=rev(c("age.first.scz",
+                                                      "sexM",
+                                                      "psych_pre.scz",
+                                                      "infect.pre.scz",
+                                                      "fhx.scz",
+                                                       "z_edlevel",
+                                                      "maternal_age",
+                                                      "paternal_age")))
+
+# put both unadjusted and adjusted estimates into facets, side by side
+labels <- c(`0` = "unadjusted (N=13561)", `1` = "adjusted (N=11679, event=3498)")
+
+fig2 <-ggplot(data=res) + # take away sex for now
+  geom_pointrange(aes(x=predictors, y=HR, ymin=HR_95L, ymax=HR_95H, col=as.factor(adj))) +
+  facet_grid(cols = vars(adj), labeller = labeller(adj=labels)) + 
+  geom_hline(yintercept=1, lty=3) +  # add a dotted line at x=1 after flip
+  coord_flip() +  # flip coordinates (puts labels on y axis)
+  labs(title = "Predictors of long hospitalisation (100 days) in SCZ (birth cohort: 1958 to 1993)",
+       x="", y="Hazard Ratio (95% CI)") +
+  theme_bw() +theme(legend.position="none")
+
+ggsave(file="~/Documents/projects/5.tryggve2/tryggve2/paper1/fig_longHSP_18mar19.png",fig2, width=8, height=6)
+
+
+```
+### Outcome 4-tx resistance
+```{r}
+
+summary(coxph(Surv(time_trs, trs_yn) ~ sex, data=analysis))$conf.int -> row1 
+summary(coxph(Surv(time_trs, trs_yn) ~ age.first.scz, data=analysis))$conf.int -> row2 
+summary(coxph(Surv(time_trs, trs_yn) ~ infect.pre.scz, data=analysis))$conf.int -> row3
+summary(coxph(Surv(time_trs, trs_yn) ~ psych_pre.scz, data=analysis))$conf.int -> row4
+summary(coxph(Surv(time_trs, trs_yn) ~ z_edlevel, data=analysis))$conf.int -> row6
+summary(coxph(Surv(time_trs, trs_yn) ~ fhx.scz, data=analysis))$conf.int -> row7
+summary(coxph(Surv(time_trs, trs_yn) ~ paternal_age, data=analysis))$conf.int -> row8
+summary(coxph(Surv(time_trs, trs_yn) ~ maternal_age, data=analysis))$conf.int -> row9
+
+rbind(row1,row2,row3,row4,row6, row7,row8,row9) -> cox.univ  
+
+cox.unadj <- as_tibble(cox.univ) %>% 
+  mutate(predictors=row.names(cox.univ), adj=0)  %>%
+  rename("HR"="exp(coef)", "HR_neg"="exp(-coef)", "HR_95L"="lower .95", "HR_95H"="upper .95") %>% 
+  select(-HR_neg)
+
+# Cox regression - adjusted
+cox.multi <- summary(coxph(Surv(time_trs, trs_yn) ~ 
+                             sex + age.first.scz + infect.pre.scz +
+                             psych_pre.scz + z_edlevel + paternal_age + maternal_age +
+                             fhx.scz, data=analysis))$conf.int
+#z_edlevel 
+cox.adj <- as_tibble(cox.multi) %>% 
+  mutate(predictors=row.names(cox.multi), adj=1)  %>%
+  rename("HR"="exp(coef)", "HR_neg"="exp(-coef)", "HR_95L"="lower .95", "HR_95H"="upper .95") %>% 
+  select(-HR_neg)
+
+res <- rbind(cox.unadj, cox.adj)
+
+# plot OR and 95%CI
+# Create labels for plot
+
+res$predictors <- factor(res$predictors, levels=rev(c("age.first.scz",
+                                                      "sexM",
+                                                      "psych_pre.scz",
+                                                      "infect.pre.scz",
+                                                      "fhx.scz",
+                                                      "z_edlevel",
+                                                      "maternal_age",
+                                                      "paternal_age")))
+
+# put both unadjusted and adjusted estimates into facets, side by side
+labels <- c(`0` = "unadjusted (N=13561)", `1` = "adjusted (N=11679, event=2445)")
+
+fig2 <-ggplot(data=res) + # take away sex for now
+  geom_pointrange(aes(x=predictors, y=HR, ymin=HR_95L, ymax=HR_95H, col=as.factor(adj))) +
+  facet_grid(cols = vars(adj), labeller = labeller(adj=labels)) + 
+  geom_hline(yintercept=1, lty=3) +  # add a dotted line at x=1 after flip
+  coord_flip() +  # flip coordinates (puts labels on y axis)
+  labs(title = "Predictors of tx resistance in SCZ (birth cohort: 1958 to 1993)",
+       x="", y="Hazard Ratio (95% CI)") +
+  theme_bw() +theme(legend.position="none")
+
+ggsave(file="~/Documents/projects/5.tryggve2/tryggve2/paper1/fig_trs_18mar19.png",fig2, width=8, height=6)
+
+
+```
