@@ -266,12 +266,10 @@ Idea: use ECT as proxy
 ECT use NOT in CRIME3 data yet -> SKIP FOR NOW
 
 ### Step 6: Outcome 6: Hospitalisation for somatic disease -> SKIP FOR NOW
-
-### Step 7: Outcome 7: income support
-### Step 8: Outcome 8: sickness pension
-### Step 9: Outcome 9: divorce
-
-### Outcome 10: early retirement???
+### Step 7: Outcome 7: income support -> SKIP FOR NOW
+### Step 8: Outcome 8: sickness pension -> SKIP FOR NOW
+### Step 9: Outcome 9: divorce -> SKIP FOR NOW
+### Step 10: Outcome 10: unemployment, early retirement??? -> SKIP FOR NOW
 
 
 ### Check missing data in all outcomes
@@ -283,5 +281,5 @@ mdd.perind %>% purrr::map_df(~ sum(is.na(.))) %>% gather(variable, N_missing)
 
 ### SAVE ALL THE DATA 
 ```{r save data}
-save.image(file = "/Users/luyi/CloudStation/WORK_2018/MyProjects_with_Pat/GAPS_MDD/DATA/FREED/DATA/mdd.part2.RData",compress = TRUE)
+save.image(file = "/Users/luyi/CloudStation/WORK_2018/MyProjects_with_Pat/GAPS_MDD/DATA/FREED/DATA/mdd.part3.RData",compress = TRUE)
 ```
