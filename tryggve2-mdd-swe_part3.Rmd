@@ -230,7 +230,7 @@ mdd.perind %>% skim(nmddinpt)
 # as opposed to the outpatient treatment 
 mdd.perind %>% skim(nmddoutpt)
 
-# So the mean is 1.8 and meadian is 1 hospitalisation 
+# So the mean is 1.8 and median is 1 hospitalisation 
 # I will just use 2 (75th percentile) as the cutoff for now
 # N.B. will restrict on *hospitalisation due to MDD* (inpatient == 1 & dx.code.num == "H01" & all MDD ICD codes)
 # This can be improved by restricting hospitalisation longer than X days 

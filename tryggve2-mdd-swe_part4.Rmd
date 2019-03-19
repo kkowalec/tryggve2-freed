@@ -93,7 +93,7 @@ load(data.f)
 
 ```
 
-### Step 2: Select birth cohort
+### Step 2: Select birth cohort & descriptive data 
 ```{r birth cohort 1958 to 1993}
 mdd.perind.2 <- mdd.perind %>%
   mutate(birth.yr = substr(dob, 1, 4)) 
@@ -103,7 +103,7 @@ studypop <- mdd.perind.2 %>%
            swe.born == 1 & 
 #           !is.na(swe.birth.county) &
            as.numeric(birth.yr %in% c(1958:1993)))
-```
+``` 
 
 ```{r descriptive statistics}
 # check missing data on each variable
@@ -112,15 +112,26 @@ studypop %>% purrr::map_df(~ sum(is.na(.))) %>% gather(variable, N_missing)
 # a quick summary of numeric variables
 # Risk factors basics 
 studypop %>% select(sex, nmddcontacts, nmddinpt, nmddoutpt, age.first.mdd, age.second.mdd, age.death) %>% skimr::skim()
+# strange that a few samples with age first and second MDD at 0 
+studypop %>% filter(age.first.mdd == 0 ) # 3 of those
+# if take out those, minimum age-onset is 5 
+studypop <- studypop %>% filter(age.first.mdd > 0 ) 
+studypop %>% select(sex, nmddcontacts, nmddinpt, nmddoutpt, age.first.mdd, age.second.mdd, age.death) %>% skimr::skim()
+
 
 # Risk factors regarding psych comorbidity
-studypop %>% select_at(ends_with("childhood", "pre.mdd")) %>% skimr::skim()
+# studypop %>% select_at(ends_with("childhood", "pre.mdd")) %>% skimr::skim()  # this syntax doesn't work
+studypop %>% select(matches('childhood$|pre.mdd$')) %>% skimr::skim()  
+# or separately
+studypop %>% select(matches('pre.mdd$')) %>% skimr::skim()  
+studypop %>% select(matches('childhood$')) %>% skimr::skim()  
+
 
 # Risk factors regarding education
 studypop %>% select(grade.std_yr, EduYr.std_byr_sex) %>% skimr::skim()
 
 # Risk factors regarding family (FHx, parental age, parental breavement) 
-studypop %>% select(paternal_age,maternal_age) %>% skimr::skim()
+studypop %>% select(paternal_age,maternal_age) %>% skimr::skim()  # issue: large missingness <- need to revist parental age! 
 
 
 studypop %>% select(fhx.mdd, mom.mdd:parental.breavement) %>% skimr::skim()
@@ -146,14 +157,14 @@ fhx.mdd.wide.2 <- fhx.mdd.wide %>%
          kid.mdd.2 = case_when(kid.mdd == 1 ~ 1, 
                                kid.mdd == 0 ~ 0, 
                                is.na(kid.mdd) & !is.na(fecund) ~ 0, # no dx
-                               TRUE ~  NA_real_ ) # i.e., missing kid's info 
+                               TRUE ~  NA_real_ ) # i.e., missing kid's info, so no kid yet??
          ) %>%
   # recoding family history
   mutate(fhx.mdd.2 = case_when(mom.mdd.2==1 | dad.mdd.2==1 | kid.mdd.2==1 | sib.mdd.2==1 ~ 1, # either of immediate family has dx (bf onset of index person)
-                         mom.mdd.2==0 & dad.mdd.2==0 & kid.mdd.2==0 & sib.mdd.2==0 ~ 0, # none of immediate family has dx
+                         mom.mdd.2==0 & dad.mdd.2==0 & (kid.mdd.2==0 | is.na(kid.mdd.2)) & sib.mdd.2==0 ~ 0, # none of immediate family has dx [Note here consider missing kids MDD status as no kid]
                          TRUE ~ NA_real_))
 
-fhx.2 <- fhx.mdd.wide.2 %>% select(id, mom.mdd.2:fhx.mdd.2) %>% group_by(id) %>% slice(1) 
+fhx.2 <- fhx.mdd.wide.2 %>% select(id, mom.mdd.2:fhx.mdd.2) %>% group_by(id) %>% slice(1)  
 
 studypop <- left_join(studypop, fhx.2, by="id")
 
@@ -197,7 +208,9 @@ parent.death %<>%
   
 studypop <- left_join(studypop, parent.death, by="id")
 
+# recheck the indicators 
 studypop %>% select(mom.mdd.2:parental.breavement.2) %>% skimr::skim()
+# note family history now ONLY missing in <2% , same as parental breavement
 
 # Outcome: suicide or attempt
 studypop %>% select(sui.attempt, sui.death) %>% skimr::skim()
@@ -205,53 +218,58 @@ studypop %>% select(sui.attempt, sui.death) %>% skimr::skim()
 ```
 
 
-### Step 3: Examine outcome 1 & 2: suicide attempt or completed suicide
-```{r outcome suicide}
+### Step 3: Examine outcomes (first outcome reached) <- need to work on the descriptive tables stratified by outcomes! 
+```{r outcome}
 outcomes <- studypop %>%
   arrange(id) %>%
   mutate(end.follow = ymd("2014-12-31")) %>%  # maybe change as 2013-12-31
-  gather("date.sui.attempt","date.sui.death", "dod", "first.emig.date","end.follow",
+  gather("date.sui.attempt","date.sui.death", "date.prem.death", "second_hosp_date", "dod", "first.emig.date","end.follow",
          key = "outcome",
          value = "date") %>%
-  select(id, sui.attempt:date, mdd:parental.breavement.2) %>%
+  select(id, outcome, date, sui.attempt,sui.death,prem.death,hosp.2x, mdd:parental.breavement.2) %>%  # Note here I kept the risk factors too
   arrange(id,date) %>%
   group_by(id) %>%
-  mutate(date.outcome.reached = first(date)) %>%
-  select(id, date.outcome.reached, sui.attempt:date, first_mdd_date) %>%
-  slice(1) 
-
+  slice(1) %>%
+  rename("first.outcome"="outcome", "date.outcome" = "date") 
+# note the above "slice(1)" will keep only the first outcome reached, 
+# but will ignore other rows if a person has multiple poor outcomes. 
+# TO IMPROVE
+  
 outcomes <- outcomes %>%
-  mutate(time = as.numeric(date - first_mdd_date)/365.25) %>% # calculate time var
+  mutate(time = as.numeric((date.outcome - first_mdd_date)/365.25)) %>% # calculate time var
   filter(time >= 0) # remove people with negative time (i.e. emigrated before reached outcome)
 
 nrow(outcomes) -> n_mdd
 
+# check the median
 outcomes.sum <- outcomes %>%
-  group_by(outcome) %>%
+  group_by(first.outcome) %>%
   summarise(median_follow_time = median(time),
             mean_follow_time = mean(time),
             sd=sd(time),
             n=n()) %>%
-  mutate(percent = (n/n_mdd)*100)
+  mutate(percent = (n/n_mdd)*100) %>%
+  arrange(desc(n))
 
-outcomes$outcome <- as.factor(outcomes$outcome)
+outcomes.sum 
 
-# define an event variable, 
-
-#outcomes <- outcomes %>%
-# mutate(outcome = ifelse(outcome=="end.follow", 0, 1))  <<<- check with KK
-
-outcomes <- outcomes %>%
-  mutate(outcome = ifelse(outcome=="date.sui.attempt"|outcome=="date.sui.death", 1, 0))
-
-
-# merge back w exposures
-dataforanalysis <- left_join(outcomes,mdd.perind, by="id")
 
 ```
 
 ### Step 4. analysis
 ```{r surivival analysis}
+
+# due to the problem above only considering the first outcome, the number of severe events (such as suicide death) were significantly restricted (b/c often have suicide attempt as first outcome)
+
+# so here I will just analyse each outcome separately
+
+dataforanalysis <- studypop %>% 
+  mutate(
+    outcome = ifelse(is.na(hosp.2x), 0, hosp.2x), # outcome = 1 or 0
+    date = ifelse(is.na(second_hosp_date),"2014-12-31", as.character(second_hosp_date)), # date as end of follow up or date of event <- TO REFINE 
+    time = as.numeric((ymd(date) - first_mdd_date)/365.25) # time is the lenght of follow up
+  )
+
 
 # Cox regression - unadjusted
 
@@ -280,8 +298,8 @@ summary(coxph(Surv(time, outcome) ~ fhx.mdd.2, data=dataforanalysis))$conf.int -
 summary(coxph(Surv(time, outcome) ~ parental.breavement.2, data=dataforanalysis))$conf.int -> row17
 
 #rbind(row1,row2,row3,row4,row5,row6,row7,row8,row9,row10,row11,row12,row13,row14,row15,row16,row17) 
-#rbind(row1,row2,row3,row4,row5,row6,row7,row8,row9,row10,row11,row12,row13,row14,row17) -> cox.univ  # skip the paternal & maternal age bz of the missingness
-rbind(row2,row3,row4,row5,row6,row7,row8,row9,row10,row11,row12,row13,row14,row17) -> cox.univ  # skip also SEX
+rbind(row1,row2,row3,row4,row5,row6,row7,row8,row9,row10,row11,row12,row13,row14,row17) -> cox.univ  # skip the paternal & maternal age bz of the missingness
+#rbind(row1,row2,row3,row4,row5,row6,row7,row8,row9,row10,row11,row12,row14,row17) -> cox.univ  # skip also row13 EduAttainment 
 
 cox.unadj <- as_tibble(cox.univ) %>% 
   mutate(predictors=row.names(cox.univ), adj=0)  %>%
@@ -291,10 +309,10 @@ cox.unadj <- as_tibble(cox.univ) %>%
 # Cox regression - adjusted
 
 cox.multi <- summary(coxph(Surv(time, outcome) ~ 
-                             # sex + 
+                             sex + 
                              age.first.mdd + 
                anx.pre.mdd + ptsd.pre.mdd + ed.pre.mdd + bip.pre.mdd + scz.pre.mdd + suds.pre.mdd  +  adhd.pre.mdd + asd.pre.mdd + ocd.pre.mdd + 
-               grade.std_yr + EduYr.std_byr_sex +
+               grade.std_yr +  EduYr.std_byr_sex +
 #               paternal_age + maternal_age +
                fhx.mdd.2 + parental.breavement.2 , data=dataforanalysis))$conf.int
 
@@ -312,18 +330,19 @@ res <- rbind(cox.unadj, cox.adj)
 # plot OR and 95%CI
 # Create labels for plot
 
-res$predictors <- factor(res$predictors, levels=rev(c("age.first.mdd",
+res$predictors <- factor(res$predictors, levels=rev(c("sexM", "age.first.mdd",
                                                   "suds.pre.mdd","ptsd.pre.mdd", "scz.pre.mdd","ed.pre.mdd","anx.pre.mdd","bip.pre.mdd","ocd.pre.mdd","adhd.pre.mdd","asd.pre.mdd",
                                                   "EduYr.std_byr_sex","grade.std_yr",
                                                   "fhx.mdd.2", "parental.breavement.2")))
-#"sexM",
+#
 
 # put both unadjusted and adjusted estimates, color coded, into one figure
+# SKIP
 fig <- ggplot(data=res) +
         geom_pointrange(aes(x=predictors, y=HR, ymin=HR_95L, ymax=HR_95H,color=as.factor(adj)), position=position_dodge(width = 0.6)) + 
         geom_hline(yintercept=1, lty=3) +  # add a dotted line at x=1 after flip
         coord_flip() +  # flip coordinates (puts labels on y axis)
-        labs(title = "Predictors of suicide or attempt in MDD (multiv n=35659, event=4399) ",
+        labs(title = "Predictors of suicide death in MDD (multiv n=35659, event=4399) ",
         x="", y="Hazard Ratio (95% CI)") +
         theme_bw() + 
   scale_colour_manual("", labels = c("unadj","adj"), values = 1:2)  
@@ -333,21 +352,21 @@ ggsave(file="/Users/luyi/CloudStation/WORK_2018/MyProjects_with_Pat/GAPS_MDD/DAT
 
 
 # put both unadjusted and adjusted estimates into facets, side by side
-labels <- c(`0` = "unadjusted (N=130002)", `1` = "adjusted (N=35659, event=4399)")
+labels <- c(`0` = "unadjusted (N=135279, event=17571)", `1` = "adjusted (N=77290, event=7178)")
 
 fig2 <-ggplot(data=res) + # take away sex for now
         geom_pointrange(aes(x=predictors, y=HR, ymin=HR_95L, ymax=HR_95H, col=as.factor(adj))) +
         facet_grid(cols = vars(adj), labeller = labeller(adj=labels)) + 
         geom_hline(yintercept=1, lty=3) +  # add a dotted line at x=1 after flip
         coord_flip() +  # flip coordinates (puts labels on y axis)
-        labs(title = "Predictors of suicide or attempt in MDD (birth cohort: 1958 to 1993)",
+        labs(title = "Predictors of ≥2 hospitalisation in MDD (birth cohort: 1958 to 1993)",
         x="", y="Hazard Ratio (95% CI)") +
         theme_bw() +theme(legend.position="none")
 
 # + scale_colour_manual("", labels = c("unadj","adj"), values = 1:2)  
 
 
-ggsave(file="/Users/luyi/CloudStation/WORK_2018/MyProjects_with_Pat/GAPS_MDD/DATA/FREED/fig_sui2.png",fig2, width=8, height=6)
+ggsave(file="/Users/luyi/CloudStation/WORK_2018/MyProjects_with_Pat/GAPS_MDD/DATA/FREED/fig2_hospitalisation_190319.png",fig2, width=8, height=6)
 
 ```
 
