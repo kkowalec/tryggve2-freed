@@ -1,0 +1,383 @@
+---
+title: "Tryggve2 - major depression - Sweden (part 4)"
+author: "Lu Yi, lu.yi@ki.se"
+date: "December 2018"
+output: 
+  html_document: 
+    fig_caption: yes
+    theme: simplex
+    highlight: zenburn
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+### Motivation and Overview
+
+NOTE: NOT RUN
+
+Examine variables associated with poor outcomes in schizophrenia, using first, the Swedish National Registers. In this report, I will present some initial coding for the analyses.
+
+**Overview**
+
+1. Import data
+2. Create a dataframe with all necessary variables including exposures and outcomes
+3. Analyses
+
+**Exposures or Predictors**
+1) Family of origin:
++ parental ages at birth ##LY
++ parental SES-education-occupation-income
++ birth order
++ family composition (number of parents/partners, parental criminality-incarceration, divorce, siblings, out-of-home placement)
+
+2) Childhood trauma: ##LY
++ parental death
++ severe medical illness of parents/sibs
+
+3) Education: done-kk
++ educational attainment
++ standardized testing in grade 9
+
+4) Prior personal medical history:
++ comorbid disorders and medication use ##kk
++ prior personal medical history (somatic disorders) #kk
++ childhood hospitalization
+
+5) Family history of psychiatric disorder ##kk
++ MD, BIP, psychosis, suicide in first-degree relatives
+
+6) Genetic risk factors  NOT NOW
++ GRS of MDD, SCZ, BIP, IQ etc.
+
+**Outcomes**
++ the number of psychiatric hospitalizations and outpatient contacts 
++ the number of somatic healthcare utilization
++ indication of 2nd or 3rd line treatments (pharmacological augmentation, ECT, TMS, DBS, clozapine) 
++ suicide or suicide attempt
+
+**TO DOs**
+
+cut down this doc into 4 separate RMD (eventually):
+outcome
+exposure/risk factors
+basics
+analysis
+
+***
+
+### Step 0: Load R packages
+```{r R packages}
+library(tidyverse)
+#library(dplyr)
+library(data.table)
+#library(ggplot2)
+library(lubridate)
+library(stringr)
+library(skimr)
+
+library(survival)
+library(broom)
+
+Sys.setenv(TZ="Europe/Stockholm")
+```
+
+### Step 1: Load data
+REQUIRE EDITING on the file path
+```{r specify file path}
+# edit the file path where you have stored the part 1 data
+data.f <- "/Users/luyi/CloudStation/WORK_2018/MyProjects_with_Pat/GAPS_MDD/DATA/FREED/DATA/mdd.part3.RData"
+
+# load the R data
+load(data.f) 
+
+```
+
+### Step 2: Select birth cohort & descriptive data 
+```{r birth cohort 1958 to 1993}
+mdd.perind.2 <- mdd.perind %>%
+  mutate(birth.yr = substr(dob, 1, 4)) 
+
+studypop <- mdd.perind.2 %>% 
+  filter(!is.na(second_mdd_date) &
+           swe.born == 1 & 
+#           !is.na(swe.birth.county) &
+           as.numeric(birth.yr %in% c(1958:1993)))
+``` 
+
+```{r descriptive statistics}
+# check missing data on each variable
+studypop %>% purrr::map_df(~ sum(is.na(.))) %>% gather(variable, N_missing)
+
+# a quick summary of numeric variables
+# Risk factors basics 
+studypop %>% select(sex, nmddcontacts, nmddinpt, nmddoutpt, age.first.mdd, age.second.mdd, age.death) %>% skimr::skim()
+# strange that a few samples with age first and second MDD at 0 
+studypop %>% filter(age.first.mdd == 0 ) # 3 of those
+# if take out those, minimum age-onset is 5 
+studypop <- studypop %>% filter(age.first.mdd > 0 ) 
+studypop %>% select(sex, nmddcontacts, nmddinpt, nmddoutpt, age.first.mdd, age.second.mdd, age.death) %>% skimr::skim()
+
+
+# Risk factors regarding psych comorbidity
+# studypop %>% select_at(ends_with("childhood", "pre.mdd")) %>% skimr::skim()  # this syntax doesn't work
+studypop %>% select(matches('childhood$|pre.mdd$')) %>% skimr::skim()  
+# or separately
+studypop %>% select(matches('pre.mdd$')) %>% skimr::skim()  
+studypop %>% select(matches('childhood$')) %>% skimr::skim()  
+
+
+# Risk factors regarding education
+studypop %>% select(grade.std_yr, EduYr.std_byr_sex) %>% skimr::skim()
+
+# Risk factors regarding family (FHx, parental age, parental breavement) 
+studypop %>% select(paternal_age,maternal_age) %>% skimr::skim()  # issue: large missingness <- need to revist parental age! 
+
+
+studypop %>% select(fhx.mdd, mom.mdd:parental.breavement) %>% skimr::skim()
+
+# N.B. recording family related risk factors: fhx_mdd & parental.breavement 
+# Previous coding: 1=yes, 0=aft the particular time (first MDD dx, or childhood), NA=no or missing
+# should change to 1=yes, 0=no (incl. no or occur after the first dx/childhood), NA = missing 
+
+fhx.mdd.wide.2 <- fhx.mdd.wide %>% 
+  # recoding the disease status for each family relation
+  mutate(mom.mdd.2 = case_when(mom.mdd == 1 ~ 1, 
+                               mom.mdd == 0 ~ 0, 
+                               is.na(mom.mdd) & !is.na(mom.id) ~ 0, # no dx 
+                               TRUE ~  NA_real_ ), # i.e., is.na(mom.id), missing mom info
+         dad.mdd.2 = case_when(dad.mdd == 1 ~ 1, 
+                               dad.mdd == 0 ~ 0, 
+                               is.na(dad.mdd) & !is.na(dad.id) ~ 0, # no dx 
+                               TRUE ~  NA_real_ ), # i.e., missing dad info 
+         sib.mdd.2 = case_when(sib.mdd == 1 ~ 1, 
+                               sib.mdd == 0 ~ 0, 
+                               is.na(sib.mdd) & !is.na(mom.id) & !is.na(dad.id) ~ 0, # no dx 
+                               TRUE ~  NA_real_ ), # i.e., missing either parent's info 
+         kid.mdd.2 = case_when(kid.mdd == 1 ~ 1, 
+                               kid.mdd == 0 ~ 0, 
+                               is.na(kid.mdd) & !is.na(fecund) ~ 0, # no dx
+                               TRUE ~  NA_real_ ) # i.e., missing kid's info, so no kid yet??
+         ) %>%
+  # recoding family history
+  mutate(fhx.mdd.2 = case_when(mom.mdd.2==1 | dad.mdd.2==1 | kid.mdd.2==1 | sib.mdd.2==1 ~ 1, # either of immediate family has dx (bf onset of index person)
+                         mom.mdd.2==0 & dad.mdd.2==0 & (kid.mdd.2==0 | is.na(kid.mdd.2)) & sib.mdd.2==0 ~ 0, # none of immediate family has dx [Note here consider missing kids MDD status as no kid]
+                         TRUE ~ NA_real_))
+
+fhx.2 <- fhx.mdd.wide.2 %>% select(id, mom.mdd.2:fhx.mdd.2) %>% group_by(id) %>% slice(1)  
+
+studypop <- left_join(studypop, fhx.2, by="id")
+
+# also recode parental death
+# index person's age at father's death: 
+parent.death <- left_join(mdd.parent, death, by=c( "dad.id" = "id")) %>% # merge with cause of death register to get dod for the dad
+  select(-first_mdd_date, -mdd) %>% # drop unwanted
+  rename(index.dob = dob) %>% # index person's date of birth
+  mutate(dad.dod = ymd(dod), dod=NULL) %>% # father's date of death
+  mutate(age_fatherdied = as.integer((dad.dod -index.dob )/365.25), # calculate index person's age when father died
+        # previous coding
+        fatherdied.childhood = ifelse(age_fatherdied <= 15, 1, 0), # decide whether father died at index's childhood, bf 15 yo
+         # recoding:
+         fatherdied.childhood.2 = case_when(age_fatherdied <= 15 ~ 1, # =1 if father died at index's childhood, bf 15 yo 
+                                          age_fatherdied > 15 ~ 0,  # =0 if father died after index's childhood
+                                          is.na(age_fatherdied) & !is.na(dad.id) ~ 0, # if dad info is not missing, only missing in death info, indicate father has not died, =0
+                                          TRUE ~  NA_real_ )) # set as missing if no dad info
+
+# index person's age at mother's death: 
+parent.death <- left_join(parent.death, death, by=c( "mom.id" = "id")) %>% # merge with cause of death register to get dod for the mom
+  mutate(mom.dod = ymd(dod), dod=NULL) %>% # mother's date of death
+  mutate(age_motherdied = as.integer((mom.dod -index.dob )/365.25), # calculate index person's age when mother died
+         motherdied.childhood = ifelse(age_motherdied <= 15, 1, 0), # decide whether mother died at index's childhood, bf 15 yo 
+         # recoding:
+         motherdied.childhood.2 = case_when(age_motherdied <= 15 ~ 1, # =1 if mother died at index's childhood, bf 15 yo 
+                                          age_motherdied > 15 ~ 0,  # =0 if mother died after index's childhood
+                                          is.na(age_motherdied) & !is.na(mom.id) ~ 0, # if mom info is not missing, only missing in death info, indicate mother has not died, =0
+                                          TRUE ~  NA_real_ )) # set as missing if no dad info
+
+
+# define parental bereavement as childhood trauma
+parent.death %<>% 
+  # if either parent died before index person was 15 years old, then parental.breavement = 1
+  # if neither of the parents died before index was 15, then parental.breavement = 0   
+  # otherwise NAs
+  mutate(parental.breavement.2 = case_when(motherdied.childhood.2==1 | fatherdied.childhood.2==1 ~ 1,
+                         motherdied.childhood.2==0 & fatherdied.childhood.2==0 ~ 0,
+                         TRUE ~ NA_real_)) %>% 
+  select(id, parental.breavement.2) %>%
+  group_by(id) %>% slice(1) 
+  
+studypop <- left_join(studypop, parent.death, by="id")
+
+# recheck the indicators 
+studypop %>% select(mom.mdd.2:parental.breavement.2) %>% skimr::skim()
+# note family history now ONLY missing in <2% , same as parental breavement
+
+# Outcome: suicide or attempt
+studypop %>% select(sui.attempt, sui.death) %>% skimr::skim()
+
+```
+
+
+### Step 3: Examine outcomes (first outcome reached) <- need to work on the descriptive tables stratified by outcomes! 
+```{r outcome}
+outcomes <- studypop %>%
+  arrange(id) %>%
+  mutate(end.follow = ymd("2014-12-31")) %>%  # maybe change as 2013-12-31
+  gather("date.sui.attempt","date.sui.death", "date.prem.death", "second_hosp_date", "dod", "first.emig.date","end.follow",
+         key = "outcome",
+         value = "date") %>%
+  select(id, outcome, date, sui.attempt,sui.death,prem.death,hosp.2x, mdd:parental.breavement.2) %>%  # Note here I kept the risk factors too
+  arrange(id,date) %>%
+  group_by(id) %>%
+  slice(1) %>%
+  rename("first.outcome"="outcome", "date.outcome" = "date") 
+# note the above "slice(1)" will keep only the first outcome reached, 
+# but will ignore other rows if a person has multiple poor outcomes. 
+# TO IMPROVE
+  
+outcomes <- outcomes %>%
+  mutate(time = as.numeric((date.outcome - first_mdd_date)/365.25)) %>% # calculate time var
+  filter(time >= 0) # remove people with negative time (i.e. emigrated before reached outcome)
+
+nrow(outcomes) -> n_mdd
+
+# check the median
+outcomes.sum <- outcomes %>%
+  group_by(first.outcome) %>%
+  summarise(median_follow_time = median(time),
+            mean_follow_time = mean(time),
+            sd=sd(time),
+            n=n()) %>%
+  mutate(percent = (n/n_mdd)*100) %>%
+  arrange(desc(n))
+
+outcomes.sum 
+
+
+```
+
+### Step 4. analysis
+```{r surivival analysis}
+
+# due to the problem above only considering the first outcome, the number of severe events (such as suicide death) were significantly restricted (b/c often have suicide attempt as first outcome)
+
+# so here I will just analyse each outcome separately
+
+dataforanalysis <- studypop %>% 
+  mutate(
+    outcome = ifelse(is.na(hosp.2x), 0, hosp.2x), # outcome = 1 or 0
+    date = ifelse(is.na(second_hosp_date),"2014-12-31", as.character(second_hosp_date)), # date as end of follow up or date of event <- TO REFINE 
+    time = as.numeric((ymd(date) - first_mdd_date)/365.25) # time is the lenght of follow up
+  )
+
+
+# Cox regression - unadjusted
+
+dataforanalysis <- dataforanalysis %>%
+  mutate(sex = ifelse(sex==1, "M", "F"))
+
+summary(coxph(Surv(time, outcome) ~ sex , data=dataforanalysis))$conf.int -> row1 
+summary(coxph(Surv(time, outcome) ~ age.first.mdd , data=dataforanalysis))$conf.int -> row2 
+
+summary(coxph(Surv(time, outcome) ~ anx.pre.mdd , data=dataforanalysis))$conf.int -> row3
+summary(coxph(Surv(time, outcome) ~ ptsd.pre.mdd , data=dataforanalysis))$conf.int -> row4
+summary(coxph(Surv(time, outcome) ~ ed.pre.mdd , data=dataforanalysis))$conf.int -> row5
+summary(coxph(Surv(time, outcome) ~ bip.pre.mdd , data=dataforanalysis))$conf.int -> row6
+summary(coxph(Surv(time, outcome) ~ scz.pre.mdd , data=dataforanalysis))$conf.int -> row7
+summary(coxph(Surv(time, outcome) ~ suds.pre.mdd , data=dataforanalysis))$conf.int -> row8
+summary(coxph(Surv(time, outcome) ~ adhd.pre.mdd, data=dataforanalysis))$conf.int -> row9
+summary(coxph(Surv(time, outcome) ~ asd.pre.mdd, data=dataforanalysis))$conf.int -> row10
+summary(coxph(Surv(time, outcome) ~ ocd.pre.mdd, data=dataforanalysis))$conf.int -> row11
+
+summary(coxph(Surv(time, outcome) ~ grade.std_yr, data=dataforanalysis))$conf.int -> row12
+summary(coxph(Surv(time, outcome) ~ EduYr.std_byr_sex, data=dataforanalysis))$conf.int -> row13
+
+summary(coxph(Surv(time, outcome) ~ fhx.mdd.2, data=dataforanalysis))$conf.int -> row14
+#summary(coxph(Surv(time, outcome) ~ paternal_age, data=dataforanalysis))$conf.int -> row15
+#summary(coxph(Surv(time, outcome) ~ maternal_age, data=dataforanalysis))$conf.int -> row16
+summary(coxph(Surv(time, outcome) ~ parental.breavement.2, data=dataforanalysis))$conf.int -> row17
+
+#rbind(row1,row2,row3,row4,row5,row6,row7,row8,row9,row10,row11,row12,row13,row14,row15,row16,row17) 
+rbind(row1,row2,row3,row4,row5,row6,row7,row8,row9,row10,row11,row12,row13,row14,row17) -> cox.univ  # skip the paternal & maternal age bz of the missingness
+#rbind(row1,row2,row3,row4,row5,row6,row7,row8,row9,row10,row11,row12,row14,row17) -> cox.univ  # skip also row13 EduAttainment 
+
+cox.unadj <- as_tibble(cox.univ) %>% 
+  mutate(predictors=row.names(cox.univ), adj=0)  %>%
+  rename("HR"="exp(coef)", "HR_neg"="exp(-coef)", "HR_95L"="lower .95", "HR_95H"="upper .95") %>% 
+  select(-HR_neg)
+  
+# Cox regression - adjusted
+
+cox.multi <- summary(coxph(Surv(time, outcome) ~ 
+                             sex + 
+                             age.first.mdd + 
+               anx.pre.mdd + ptsd.pre.mdd + ed.pre.mdd + bip.pre.mdd + scz.pre.mdd + suds.pre.mdd  +  adhd.pre.mdd + asd.pre.mdd + ocd.pre.mdd + 
+               grade.std_yr +  EduYr.std_byr_sex +
+#               paternal_age + maternal_age +
+               fhx.mdd.2 + parental.breavement.2 , data=dataforanalysis))$conf.int
+
+cox.adj <- as_tibble(cox.multi) %>% 
+  mutate(predictors=row.names(cox.multi), adj=1)  %>%
+  rename("HR"="exp(coef)", "HR_neg"="exp(-coef)", "HR_95L"="lower .95", "HR_95H"="upper .95") %>% 
+  select(-HR_neg)
+
+res <- rbind(cox.unadj, cox.adj)
+
+
+```
+
+```{r plotting}
+# plot OR and 95%CI
+# Create labels for plot
+
+res$predictors <- factor(res$predictors, levels=rev(c("sexM", "age.first.mdd",
+                                                  "suds.pre.mdd","ptsd.pre.mdd", "scz.pre.mdd","ed.pre.mdd","anx.pre.mdd","bip.pre.mdd","ocd.pre.mdd","adhd.pre.mdd","asd.pre.mdd",
+                                                  "EduYr.std_byr_sex","grade.std_yr",
+                                                  "fhx.mdd.2", "parental.breavement.2")))
+#
+
+# put both unadjusted and adjusted estimates, color coded, into one figure
+# SKIP
+fig <- ggplot(data=res) +
+        geom_pointrange(aes(x=predictors, y=HR, ymin=HR_95L, ymax=HR_95H,color=as.factor(adj)), position=position_dodge(width = 0.6)) + 
+        geom_hline(yintercept=1, lty=3) +  # add a dotted line at x=1 after flip
+        coord_flip() +  # flip coordinates (puts labels on y axis)
+        labs(title = "Predictors of suicide death in MDD (multiv n=35659, event=4399) ",
+        x="", y="Hazard Ratio (95% CI)") +
+        theme_bw() + 
+  scale_colour_manual("", labels = c("unadj","adj"), values = 1:2)  
+
+ggsave(file="/Users/luyi/CloudStation/WORK_2018/MyProjects_with_Pat/GAPS_MDD/DATA/FREED/fig_sui.png",fig, width=8, height=6)
+
+
+
+# put both unadjusted and adjusted estimates into facets, side by side
+labels <- c(`0` = "unadjusted (N=135279, event=17571)", `1` = "adjusted (N=77290, event=7178)")
+
+fig2 <-ggplot(data=res) + # take away sex for now
+        geom_pointrange(aes(x=predictors, y=HR, ymin=HR_95L, ymax=HR_95H, col=as.factor(adj))) +
+        facet_grid(cols = vars(adj), labeller = labeller(adj=labels)) + 
+        geom_hline(yintercept=1, lty=3) +  # add a dotted line at x=1 after flip
+        coord_flip() +  # flip coordinates (puts labels on y axis)
+        labs(title = "Predictors of ≥2 hospitalisation in MDD (birth cohort: 1958 to 1993)",
+        x="", y="Hazard Ratio (95% CI)") +
+        theme_bw() +theme(legend.position="none")
+
+# + scale_colour_manual("", labels = c("unadj","adj"), values = 1:2)  
+
+
+ggsave(file="/Users/luyi/CloudStation/WORK_2018/MyProjects_with_Pat/GAPS_MDD/DATA/FREED/fig2_hospitalisation_190319.png",fig2, width=8, height=6)
+
+```
+
+### Check missing data in all outcomes
+```{r missingness}
+# check missing data on each variable
+mdd.perind %>% purrr::map_df(~ sum(is.na(.))) %>% gather(variable, N_missing)
+
+```
+
+### SAVE ALL THE DATA 
+```{r save data}
+save.image(file = "/Users/luyi/CloudStation/WORK_2018/MyProjects_with_Pat/GAPS_MDD/DATA/FREED/DATA/mdd.part4.tmp.RData",compress = TRUE)
+```

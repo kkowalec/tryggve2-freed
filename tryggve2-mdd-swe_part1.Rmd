@@ -368,8 +368,8 @@ mdd <- mdd %>%
 
 ### Step 3: Demographics: sex, death, emigration
 
-3.1 Merge SCZ cohort with population register 
-Add sex and birthdate to the SCZ cohort, also derive age at first & second diagnoses
+3.1 Merge MDD cohort with population register 
+Add sex and birthdate to the MDD cohort, also derive age at first & second diagnoses
 ```{r add sex and birth info}
 mdd <- left_join(mdd, pop, by="id") %>% 
   mutate(dob = ymd(dob)) %>% # birth date as date object 
@@ -380,8 +380,8 @@ rm(pop) # remove pop register
 
 ```
 
-3.2 Merge SCZ cohort with Cause of Death register 
-Add death date to the SCZ cohort, also derive age at death (if deceased)
+3.2 Merge MDD cohort with Cause of Death register 
+Add death date to the MDD cohort, also derive age at death (if deceased)
 ```{r add death info}
 mdd <- left_join(mdd, death, by="id") %>% 
   mutate(dod = ymd(dod)) %>% # death date as date object
@@ -390,7 +390,7 @@ mdd <- left_join(mdd, death, by="id") %>%
 rm(death) # remove death reg
 ```
 
-3.3 Merge SCZ cohort with Emigration register
+3.3 Merge MDD cohort with Emigration register
 First restrict the cohort to those born in the respective country
 Then add the date of first emigration (since then lost FU)
 ```{r add emigration info}
