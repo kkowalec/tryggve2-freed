@@ -33,6 +33,7 @@ library(survival)
 library(broom)
 library(kableExtra)
 library(lubridate)
+library(pROC)
 
 Sys.setenv(TZ="Europe/Stockholm")
 ```
@@ -597,6 +598,52 @@ df <- outcomes %>%
 ```
 ### Step 3: Logistic regression
 ```{r}
+studypop <- studypop %>%
+  mutate(fhx.scz=ifelse(is.na(fhx.scz),0,fhx.scz),
+         sex = ifelse(sex==1, "M", "F"),
+         outcome1 = ifelse(is.na(outcome1),0,outcome1), # suicide attempt
+         outcome2 = ifelse(is.na(outcome2),0,outcome2), # suicide completed
+         outcome3 = ifelse(is.na(outcome3),0,outcome3), # premature dead
+         outcome4 = ifelse(is.na(outcome4),0,outcome4), # long hospital
+         outcome5 = ifelse(is.na(outcome5),0,outcome5)) # TRS
+         
+studypop$sex <- as.factor(studypop$sex)
+
+# suicides
+library(rms)
+resLrm <- lrm(formula = outcome1 ~ age.first.scz + sex + psych_pre.scz + infect.pre.scz +
+              fhx.scz + z_edlevel + maternal_age + paternal_age,
+              data = studypop,
+              x = TRUE, y = TRUE)
+resLrm
+
+# suicide completed
+x <- lrm(formula = outcome2 ~ age.first.scz + sex + psych_pre.scz + infect.pre.scz +
+              fhx.scz  + maternal_age + paternal_age,
+              data = studypop,
+              x = TRUE, y = TRUE)
+resLrm
+
+# premature death
+resLrm <- lrm(formula = outcome3 ~ age.first.scz + sex + psych_pre.scz + infect.pre.scz +
+              fhx.scz + maternal_age + paternal_age,
+              data = studypop,
+              x = TRUE, y = TRUE)
+resLrm
+# long hsp
+resLrm <- lrm(formula = outcome4 ~ age.first.scz + sex + psych_pre.scz + infect.pre.scz +
+              fhx.scz + z_edlevel + maternal_age + paternal_age,
+              data = studypop,
+              x = TRUE, y = TRUE)
+resLrm
+# TRS
+resLrm <- lrm(formula = outcome5 ~ age.first.scz + sex + psych_pre.scz + infect.pre.scz +
+              fhx.scz + z_edlevel + maternal_age + paternal_age,
+              data = studypop,
+              x = TRUE, y = TRUE)
+resLrm
+
+# general outcome composite measure
 log.reg <- glm(outcome_di ~ psych_pre.scz + sex + age.first.scz +
                 psych_fhx + infect.pre.scz + cancer.pre.scz + ai.pre.scz, family="binomial", data=analysis)
 summary(log.reg)
@@ -660,11 +707,8 @@ stepmodel <- My.stepwise.coxph(Time = "fu.time", Status = "outcome_di", variable
 
 ### Step X: Alternate Cox regression
 ```{r}
-analysis <- analysis %>%
-  mutate(fhx.scz=ifelse(is.na(fhx.scz),0,fhx.scz))
-analysis <- analysis %>%
-  mutate(sex = ifelse(sex==1, "M", "F"))
-analysis$sex <- as.factor(analysis$sex)
+
+
 # Suicides
 summary(coxph(Surv(time_sui, suicide_yn) ~ sex, data=analysis))$conf.int -> row1 
 summary(coxph(Surv(time_sui, suicide_yn) ~ age.first.scz, data=analysis))$conf.int -> row2 
