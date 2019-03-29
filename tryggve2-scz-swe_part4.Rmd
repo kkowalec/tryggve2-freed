@@ -171,7 +171,7 @@ suicide <- suicide %>%
   select(id,date.sui.reached,time_sui,suicide_yn,suicide_yn_cat)
 
 # merge back w exposures
-analysis <- left_join(suicide,studypop)
+analysis <- left_join(studypop,suicide)
 ```
 
 ### Step 2a: Derive individual outcomes for analysis (premature mortality)
@@ -215,7 +215,7 @@ pdeath <- pdeath %>%
   select(id,date.pd.reached,time_pd,pd_yn,pd_yn_cat)
 
 # merge back w exposures
-analysis <- left_join(pdeath,analysis)
+analysis <- left_join(analysis,pdeath)
 ```
 
 ### Step 2b: Derive individual outcomes for analysis (hospitalised 100 days)
@@ -259,7 +259,7 @@ hsp <- hsp %>%
   select(id,date.hsp.reached,time_hsp,hsp_yn,hsp_yn_cat)
 
 # merge back w exposures
-analysis <- left_join(hsp,analysis)
+analysis <- left_join(analysis,hsp)
 ```
 ### Step 2c: Derive individual outcomes for analysis (clozapine.prescrip)
 ```{r}
@@ -302,7 +302,7 @@ trs <- trs %>%
   select(id,date.trs.reached,time_trs,trs_yn,trs_yn_cat)
 
 # merge back w exposures
-analysis <- left_join(trs,analysis)
+analysis <- left_join(analysis,trs)
 
 ```
 
@@ -716,10 +716,10 @@ summary(coxph(Surv(time_sui, suicide_yn) ~ infect.pre.scz, data=analysis))$conf.
 summary(coxph(Surv(time_sui, suicide_yn) ~ psych_pre.scz, data=analysis))$conf.int -> row4
 summary(coxph(Surv(time_sui, suicide_yn) ~ z_edlevel, data=analysis))$conf.int -> row6
 summary(coxph(Surv(time_sui, suicide_yn) ~ fhx.scz, data=analysis))$conf.int -> row7
-summary(coxph(Surv(time_sui, suicide_yn) ~ paternal_age, data=analysis))$conf.int -> row8
-summary(coxph(Surv(time_sui, suicide_yn) ~ maternal_age, data=analysis))$conf.int -> row9
+summary(coxph(Surv(time_sui, suicide_yn) ~ std.grade, data=analysis))$conf.int -> row8
+#summary(coxph(Surv(time_sui, suicide_yn) ~ maternal_age, data=analysis))$conf.int -> row9
 
-rbind(row1,row2,row3,row4,row6,row7,row8,row9) -> cox.univ  
+rbind(row1,row2,row3,row4,row6,row7,row8) -> cox.univ  
 
 cox.unadj <- as_tibble(cox.univ) %>% 
   mutate(predictors=row.names(cox.univ), adj=0)  %>%
@@ -729,7 +729,7 @@ cox.unadj <- as_tibble(cox.univ) %>%
 # Cox regression - adjusted
 cox.multi <- summary(coxph(Surv(time_sui, suicide_yn) ~ 
                              sex + age.first.scz + infect.pre.scz +
-                             psych_pre.scz + z_edlevel + paternal_age + maternal_age +
+                             psych_pre.scz + z_edlevel + std.grade +
                fhx.scz, data=analysis))$conf.int
 
 cox.adj <- as_tibble(cox.multi) %>% 
@@ -748,8 +748,7 @@ res$predictors <- factor(res$predictors, levels=rev(c("age.first.scz",
                                                   "infect.pre.scz",
                                                   "fhx.scz",
                                                   "z_edlevel",
-                                                  "maternal_age",
-                                                  "paternal_age")))
+                                                  "std.grade")))
 
 # put both unadjusted and adjusted estimates into facets, side by side
 labels <- c(`0` = "unadjusted (N=13561)", `1` = "adjusted (N=11679, event=1265)")
@@ -763,7 +762,7 @@ fig2 <-ggplot(data=res) + # take away sex for now
         x="", y="Hazard Ratio (95% CI)") +
         theme_bw() +theme(legend.position="none")
 
-ggsave(file="~/Documents/projects/5.tryggve2/tryggve2/paper1/fig_sui2_18mar19.png",fig2, width=8, height=6)
+ggsave(file="~/Documents/projects/5.tryggve2/tryggve2/paper1/fig_sui2_29mar19.png",fig2, width=8, height=6)
 
 
 ```
@@ -775,10 +774,9 @@ summary(coxph(Surv(time_pd, pd_yn) ~ infect.pre.scz, data=analysis))$conf.int ->
 summary(coxph(Surv(time_pd, pd_yn) ~ psych_pre.scz, data=analysis))$conf.int -> row4
 #summary(coxph(Surv(time_pd, pd_yn) ~ z_edlevel, data=analysis))$conf.int -> row6
 summary(coxph(Surv(time_pd, pd_yn) ~ fhx.scz, data=analysis))$conf.int -> row7
-summary(coxph(Surv(time_pd, pd_yn) ~ paternal_age, data=analysis))$conf.int -> row8
-summary(coxph(Surv(time_pd, pd_yn) ~ maternal_age, data=analysis))$conf.int -> row9
+summary(coxph(Surv(time_pd, pd_yn) ~ std.grade, data=analysis))$conf.int -> row8
 
-rbind(row1,row2,row3,row4,row7,row8,row9) -> cox.univ  
+rbind(row1,row2,row3,row4,row7,row8) -> cox.univ  
 #row6
 cox.unadj <- as_tibble(cox.univ) %>% 
   mutate(predictors=row.names(cox.univ), adj=0)  %>%
@@ -788,7 +786,7 @@ cox.unadj <- as_tibble(cox.univ) %>%
 # Cox regression - adjusted
 cox.multi <- summary(coxph(Surv(time_pd, pd_yn) ~ 
                              sex + age.first.scz + infect.pre.scz +
-                             psych_pre.scz + paternal_age + maternal_age +
+                             psych_pre.scz + std.grade +
                              fhx.scz, data=analysis))$conf.int
 #z_edlevel 
 cox.adj <- as_tibble(cox.multi) %>% 
@@ -807,8 +805,7 @@ res$predictors <- factor(res$predictors, levels=rev(c("age.first.scz",
                                                       "infect.pre.scz",
                                                       "fhx.scz",
                                                      # "z_edlevel",
-                                                      "maternal_age",
-                                                      "paternal_age")))
+                                                      "std.grade")))
 
 # put both unadjusted and adjusted estimates into facets, side by side
 labels <- c(`0` = "unadjusted (N=13561)", `1` = "adjusted (N=13094, event=1176)")
@@ -822,7 +819,7 @@ fig2 <-ggplot(data=res) + # take away sex for now
        x="", y="Hazard Ratio (95% CI)") +
   theme_bw() +theme(legend.position="none")
 
-ggsave(file="~/Documents/projects/5.tryggve2/tryggve2/paper1/fig_prematuremort_18mar19.png",fig2, width=8, height=6)
+ggsave(file="~/Documents/projects/5.tryggve2/tryggve2/paper1/fig_prematuremort_29mar19.png",fig2, width=8, height=6)
 
 
 ```
@@ -834,10 +831,9 @@ summary(coxph(Surv(time_hsp, hsp_yn) ~ infect.pre.scz, data=analysis))$conf.int 
 summary(coxph(Surv(time_hsp, hsp_yn) ~ psych_pre.scz, data=analysis))$conf.int -> row4
 summary(coxph(Surv(time_hsp, hsp_yn) ~ z_edlevel, data=analysis))$conf.int -> row6
 summary(coxph(Surv(time_hsp, hsp_yn) ~ fhx.scz, data=analysis))$conf.int -> row7
-summary(coxph(Surv(time_hsp, hsp_yn) ~ paternal_age, data=analysis))$conf.int -> row8
-summary(coxph(Surv(time_hsp, hsp_yn) ~ maternal_age, data=analysis))$conf.int -> row9
+summary(coxph(Surv(time_hsp, hsp_yn) ~ std.grade, data=analysis))$conf.int -> row8
 
-rbind(row1,row2,row3,row4,row6, row7,row8,row9) -> cox.univ  
+rbind(row1,row2,row3,row4,row6, row7,row8) -> cox.univ  
 
 cox.unadj <- as_tibble(cox.univ) %>% 
   mutate(predictors=row.names(cox.univ), adj=0)  %>%
@@ -847,7 +843,7 @@ cox.unadj <- as_tibble(cox.univ) %>%
 # Cox regression - adjusted
 cox.multi <- summary(coxph(Surv(time_hsp, hsp_yn) ~ 
                              sex + age.first.scz + infect.pre.scz +
-                             psych_pre.scz + z_edlevel + paternal_age + maternal_age +
+                             psych_pre.scz + z_edlevel + std.grade +
                              fhx.scz, data=analysis))$conf.int
 #z_edlevel 
 cox.adj <- as_tibble(cox.multi) %>% 
@@ -866,8 +862,7 @@ res$predictors <- factor(res$predictors, levels=rev(c("age.first.scz",
                                                       "infect.pre.scz",
                                                       "fhx.scz",
                                                        "z_edlevel",
-                                                      "maternal_age",
-                                                      "paternal_age")))
+                                                      "std.grade")))
 
 # put both unadjusted and adjusted estimates into facets, side by side
 labels <- c(`0` = "unadjusted (N=13561)", `1` = "adjusted (N=11679, event=3498)")
@@ -881,7 +876,7 @@ fig2 <-ggplot(data=res) + # take away sex for now
        x="", y="Hazard Ratio (95% CI)") +
   theme_bw() +theme(legend.position="none")
 
-ggsave(file="~/Documents/projects/5.tryggve2/tryggve2/paper1/fig_longHSP_18mar19.png",fig2, width=8, height=6)
+ggsave(file="~/Documents/projects/5.tryggve2/tryggve2/paper1/fig_longHSP_29mar19.png",fig2, width=8, height=6)
 
 
 ```
@@ -894,10 +889,9 @@ summary(coxph(Surv(time_trs, trs_yn) ~ infect.pre.scz, data=analysis))$conf.int 
 summary(coxph(Surv(time_trs, trs_yn) ~ psych_pre.scz, data=analysis))$conf.int -> row4
 summary(coxph(Surv(time_trs, trs_yn) ~ z_edlevel, data=analysis))$conf.int -> row6
 summary(coxph(Surv(time_trs, trs_yn) ~ fhx.scz, data=analysis))$conf.int -> row7
-summary(coxph(Surv(time_trs, trs_yn) ~ paternal_age, data=analysis))$conf.int -> row8
-summary(coxph(Surv(time_trs, trs_yn) ~ maternal_age, data=analysis))$conf.int -> row9
+summary(coxph(Surv(time_trs, trs_yn) ~ std.grade, data=analysis))$conf.int -> row8
 
-rbind(row1,row2,row3,row4,row6, row7,row8,row9) -> cox.univ  
+rbind(row1,row2,row3,row4,row6, row7,row8) -> cox.univ  
 
 cox.unadj <- as_tibble(cox.univ) %>% 
   mutate(predictors=row.names(cox.univ), adj=0)  %>%
@@ -907,7 +901,7 @@ cox.unadj <- as_tibble(cox.univ) %>%
 # Cox regression - adjusted
 cox.multi <- summary(coxph(Surv(time_trs, trs_yn) ~ 
                              sex + age.first.scz + infect.pre.scz +
-                             psych_pre.scz + z_edlevel + paternal_age + maternal_age +
+                             psych_pre.scz + z_edlevel + std.grade +
                              fhx.scz, data=analysis))$conf.int
 #z_edlevel 
 cox.adj <- as_tibble(cox.multi) %>% 
@@ -926,13 +920,12 @@ res$predictors <- factor(res$predictors, levels=rev(c("age.first.scz",
                                                       "infect.pre.scz",
                                                       "fhx.scz",
                                                       "z_edlevel",
-                                                      "maternal_age",
-                                                      "paternal_age")))
+                                                      "std.grade")))
 
 # put both unadjusted and adjusted estimates into facets, side by side
 labels <- c(`0` = "unadjusted (N=13561)", `1` = "adjusted (N=11679, event=2445)")
 
-fig2 <-ggplot(data=res) + # take away sex for now
+fig2 <-ggplot(data=res) + 
   geom_pointrange(aes(x=predictors, y=HR, ymin=HR_95L, ymax=HR_95H, col=as.factor(adj))) +
   facet_grid(cols = vars(adj), labeller = labeller(adj=labels)) + 
   geom_hline(yintercept=1, lty=3) +  # add a dotted line at x=1 after flip
@@ -941,7 +934,7 @@ fig2 <-ggplot(data=res) + # take away sex for now
        x="", y="Hazard Ratio (95% CI)") +
   theme_bw() +theme(legend.position="none")
 
-ggsave(file="~/Documents/projects/5.tryggve2/tryggve2/paper1/fig_trs_18mar19.png",fig2, width=8, height=6)
+ggsave(file="~/Documents/projects/5.tryggve2/tryggve2/paper1/fig_trs_29mar19.png",fig2, width=8, height=6)
 
 
 ```
