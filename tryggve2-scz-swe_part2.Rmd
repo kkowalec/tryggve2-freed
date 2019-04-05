@@ -125,11 +125,12 @@ Need to start with making a list of any one with a psych disorder in Sweden beca
 
 We are only selecting those with a date (1) before first treatment contact and (2) before age 15 years (indicating childhood)
 
-+ comorbid psych disorders/conditions: psych (adhd, asd, anx, bip, ed, mdd, ocd, ptsd, suds, suicides)
++ comorbid psych disorders/conditions: psych (adhd, asd, anx, bip, ed, mdd, ocd, ptsd, suds, suicides, id)
 + medication use (wait on this-not sure which drugs to focus on)
 
 1. ADHD
 ```{r ADHD}
+
 # first extract all individuals with ADHD diagnosis 
 adhd <- hdr %>% 
   filter(  (icd.version==9 & grepl("^314|^314A|^314B|^314C|^314J|^314W|^314X", diagnosis)) # no icd codes for ADHD prior to ICD version 9
@@ -151,7 +152,7 @@ scz.adhd <- inner_join(first.scz.date,adhd, by="id") %>% # inner join together w
          adhd.childhood = ifelse(age.first.adhd <= 15, 1, 0), # only those with adhd dx before age 15 years
          adhd.pre.scz = ifelse(first.adhd.date < first_scz_date, 1, 0)  #  only those with adhd dx before scz contact
          ) %>%
-  select(id,nadhdcontacts, adhd.childhood,adhd.pre.scz)
+  select(id,age.first.adhd,nadhdcontacts, adhd.childhood,adhd.pre.scz)
 
 ```
 2. ASD
@@ -177,7 +178,7 @@ scz.asd <- inner_join(first.scz.date,asd, by="id") %>% # inner join together wit
          asd.childhood = ifelse(age.first.asd <= 15, 1, 0), # only those with dx before age 15 years
          asd.pre.scz = ifelse(first.asd.date < first_scz_date, 1, 0)  #  only those with dx before scz contact
          ) %>%
-  select(id, nasdcontacts, asd.childhood, asd.pre.scz)
+  select(id, age.first.asd, nasdcontacts, asd.childhood, asd.pre.scz)
 
 ```
 3. Anxiety
@@ -204,7 +205,7 @@ scz.anx <- inner_join(first.scz.date,anx, by="id") %>%  # inner join together wi
          anx.childhood = ifelse(age.first.anx <= 15, 1, 0), # only those with anx dx before age 15 years
          anx.pre.scz = ifelse(first.anx.date < first_scz_date, 1, 0)  #  only those with anx dx before scz contact
   ) %>%
-  select(id, nanxcontacts, anx.childhood, anx.pre.scz)
+  select(id, age.first.anx,nanxcontacts, anx.childhood, anx.pre.scz)
 
 ```
 4. Bipolar
@@ -230,7 +231,7 @@ scz.bip <- inner_join(first.scz.date,bip, by="id") %>%# inner join together with
          bip.childhood = ifelse(age.first.bip <= 15, 1, 0), # only those with bip dx before age 15 years
          bip.pre.scz = ifelse(first.bip.date < first_scz_date, 1, 0)  #  only those with bip dx before scz contact
   ) %>%
-  select(id, nbipcontacts, bip.childhood, bip.pre.scz)
+  select(id, age.first.bip, nbipcontacts, bip.childhood, bip.pre.scz)
 ```
 5. Eating disorder
 ```{r ED}
@@ -255,7 +256,7 @@ scz.ed <- inner_join(first.scz.date,ed, by="id") %>% # inner join together with 
          ed.childhood = ifelse(age.first.ed <= 15, 1, 0), # only those with ed dx before age 15 years
          ed.pre.scz = ifelse(first.ed.date < first_scz_date, 1, 0)  #  only those with ed dx before scz contact
   ) %>%
-  select(id, nedcontacts, ed.childhood, ed.pre.scz)
+  select(id, age.first.ed,nedcontacts, ed.childhood, ed.pre.scz)
 ```
 6. Major depression
 ```{r MDD}
@@ -280,7 +281,7 @@ scz.mdd <- inner_join(first.scz.date,mdd, by="id") %>% # inner join together wit
   mutate(age.first.mdd = as.integer((first.mdd.date - dob)/365.25),
          mdd.childhood = ifelse(age.first.mdd <= 15, 1, 0), # only those with mdd dx before age 15 years
          mdd.pre.scz = ifelse(first.mdd.date < first_scz_date, 1, 0)) %>% #  only those with mdd dx before scz contact
-  select(id, nmddcontacts, mdd.childhood, mdd.pre.scz)
+  select(id, age.first.mdd,nmddcontacts, mdd.childhood, mdd.pre.scz)
 
 ```
 7. Obsessive-Compulsive Disorder
@@ -305,7 +306,7 @@ scz.ocd <- inner_join(first.scz.date,ocd, by="id") %>% # inner join together wit
   mutate(age.first.ocd = as.integer((first.ocd.date - dob)/365.25),
          ocd.childhood = ifelse(age.first.ocd <= 15, 1, 0), # only those with ocd dx before age 15 years
          ocd.pre.scz = ifelse(first.ocd.date < first_scz_date, 1, 0)  ) %>% #  only those with ocd dx before scz contact
-  select(id, nocdcontacts, ocd.childhood, ocd.pre.scz)
+  select(id,age.first.ocd, nocdcontacts, ocd.childhood, ocd.pre.scz)
 ```
 8. Post-traumatic stress disorder
 ```{r PTSD}
@@ -329,7 +330,7 @@ scz.ptsd <- inner_join(first.scz.date,ptsd, by="id") %>% # inner join together w
   mutate(age.first.ptsd = as.integer((first.ptsd.date - dob)/365.25),
          ptsd.childhood = ifelse(age.first.ptsd <= 15, 1, 0), # only those with ptsd dx before age 15 years
          ptsd.pre.scz = ifelse(first.ptsd.date < first_scz_date, 1, 0) ) %>% #  only those with ptsd dx before scz contact
-  select(id, nptsdcontacts, ptsd.childhood, ptsd.pre.scz)
+  select(id, age.first.ptsd, nptsdcontacts, ptsd.childhood, ptsd.pre.scz)
 
 ```
 9. Substance use disorder
@@ -356,7 +357,7 @@ scz.suds <- inner_join(first.scz.date,suds, by="id") %>% # inner join together w
          suds.childhood = ifelse(age.first.suds <= 15, 1, 0), # only those with suds dx before age 15 years
          suds.pre.scz = ifelse(first.suds.date < first_scz_date, 1, 0)  #  only those with suds dx before scz contact
   ) %>%
-  select(id, nsudcontacts, suds.childhood, suds.pre.scz)
+  select(id, age.first.suds,nsudcontacts, suds.childhood, suds.pre.scz)
 ```
 10. Suicide
 ```{r suicide}
@@ -381,9 +382,35 @@ scz.sui <- inner_join(first.scz.date,sui, by="id") %>% # inner join together wit
          sui.childhood = ifelse(age.first.sui <= 15, 1, 0), # only those with sui dx before age 15 years
          sui.pre.scz = ifelse(first.sui.date < first_scz_date, 1, 0)  #  only those with sui dx before scz contact
   ) %>%
-  select(id, nsuicontacts, sui.childhood, sui.pre.scz)
+  select(id, age.first.sui,nsuicontacts, sui.childhood, sui.pre.scz)
 ```
-11. Merge all psych comorbidity
+11. Intellectual disability
+```{r intellectual disability}
+# first extract all individuals with intellectual disability  
+int.dis <- hdr %>%
+   filter((icd.version==8 & grepl("^310|^311|^312|^313|^314|^315", diagnosis))
+      | (icd.version==9 & grepl("^317|^318|^319", diagnosis))
+      | (icd.version==10 & grepl("^F70|^F71|^F72|^F73|^F74|^F75|^F76|^F77|^F78|^F79", diagnosis)) ) %>%
+  mutate(int.dis = 1,
+         admit.date = ymd(admit.date)) %>%
+  arrange(id, admit.date) %>%
+  group_by(id) %>%
+  add_count(id) %>%  # record the number of diagnoses per individual into variable "n"
+  rename(nintdiscontacts = n) %>% # rename n 
+  mutate(first.intdis.date = first(admit.date)) %>%
+  slice(1) %>%
+  select(id, sui, nintdiscontacts, first.intdis.date)
+
+# then merge with individuals with SCZ 
+scz.intdis <- inner_join(first.scz.date,int.dis, by="id") %>% # inner join together with scz cases
+  mutate(age.first.intdis = as.integer((first.intdis.date - dob)/365.25),
+         intdis.childhood = ifelse(age.first.intdis <= 15, 1, 0), # only those with sui dx before age 15 years
+         intdis.pre.scz = ifelse(first.intdis.date < first_scz_date, 1, 0)  #  only those with sui dx before scz contact
+  ) %>%
+  select(id, age.first.intdis, nintdiscontacts, intdis.childhood, intdis.pre.scz)
+```
+
+12. Merge all psych comorbidity
 ```{r All psych comorbidity}
 
 psych.comorbid <- full_join(scz.bip, scz.anx, by = "id")
@@ -395,18 +422,19 @@ psych.comorbid <- full_join(psych.comorbid, scz.ocd, by = "id")
 psych.comorbid <- full_join(psych.comorbid, scz.asd, by = "id")
 psych.comorbid <- full_join(psych.comorbid, scz.mdd, by = "id")
 psych.comorbid <- full_join(psych.comorbid, scz.sui, by = "id") 
+psych.comorbid <- full_join(psych.comorbid, scz.intdis, by = "id") 
 
-rm(scz.bip,scz.anx,scz.ptsd,scz.adhd,scz.ed,scz.sui,scz.suds,scz.ocd,scz.asd,scz.mdd) # remove original dataframes
+rm(scz.bip,scz.anx,scz.ptsd,scz.adhd,scz.ed,scz.sui,scz.suds,scz.ocd,scz.asd,scz.mdd,scz.intdis) # remove original dataframes
  
 ```
-12. Merge with SCZ per-indiv records & apply exclusion criteria
+13. Merge with SCZ per-indiv records & apply exclusion criteria
 ```{r merge with SCZ ind}
 scz.perind <- left_join(scz.perind, psych.comorbid, by = "id")
 rm(psych.comorbid)
 
 # replace the NAs in comorbidity columns as 0
 scz.perind <- scz.perind %>%
-  mutate_at(vars(nbipcontacts:sui.pre.scz),funs(replace(., is.na(.),0)))
+  mutate_at(vars(nbipcontacts:intdis.pre.scz),funs(replace(., is.na(.),0)))
 
 # Exclusion criteria for SCZ cases
 # For Bipolar disorder, need to exclude SCZ cases w BIP as the dominant 
@@ -641,7 +669,7 @@ We are only selecting those with a date (1) before first treatment contact and (
 scz.list <- scz %>%
   select(id)
 
-scz.hdr <- fread("tryggve_psych_v_hdr_scz.tsv", sep="\t") %>%
+scz.hdr <- fread("~/tryggve_psych_v_hdr_scz.tsv", sep="\t") %>%
   as_tibble() %>%
   rename(id=LOPNR,
          admit.date=DATUM, # date of admission
@@ -832,11 +860,6 @@ scz <- scz %>%
          cancer.pre.scz=ifelse(is.na(cancer.pre.scz),0,cancer.pre.scz))
 
 # Infections and parasitic conditions	
-# ICD8: 000-027,030-046,050-057,060-068,070-104, 110-117,120-136
-# ICD9: 001-018,020-027,030-042,045-057,060-066,070-088,090-104,110-118,120-139
-# ICD10 A00-B99
-
-## NEW - includes more codes
 # Köhler-Forsberg O, Petersen L, Gasse C, et al. 
 # A nationwide study in Denmark of the association
 # between treated infections and the subsequent risk of treated mental disorders in children and
@@ -844,25 +867,58 @@ scz <- scz %>%
 # JAMA Psychiatry. Published online December 5, 2018
 
 infect <- scz.hdr %>%
-   filter((icd.version!=10 & grepl("^001|^002|^003|^004|^005|^006|^007|^008|^009|
-                                  ^013|^02701|^03609|^035|^038|^041|^042|^043|^04509|
-                                  ^04699|^050|^051|^052|^053|^054|^055|^056|^057|^06209|
-                                  ^063|^064|^065|^070|^07199|^07202|^07501|^07929|^09049|^0949|
-                                  ^110|^111|^32300|^381|^382|^320|^322|^392|^46|^47|^48|
-                                  ^540|^580|^590|^59500|^59501|^612|^620|^622|^680|^681|^682|^683|^684|^685|^686", diagnosis))
-      | (icd.version==10 & grepl("^A40|^A41|^A00|^A01|^A02|^A03|^A04|^A05|^A06|^A07|^A08|^A09|^A17|^A46|^A80|
-                                  ^A548A|^A548D|^A521A|^A521B|^A229C|^A321|^A504|^A390|
-                                  ^B00|^B01|^B02|^B03|^B04|^B05|^B06|^B07|^B08|^B09|^B010|^B011|^B15|^B16|^B17|^B18|^B19|
-                                  ^B261|^B262|^B375|^B451|^B582|^B602|^E236A|^K35|^L00|^L01|^L02|^L03|^L04|^L05|^L06|^L07|^L08|
-                                  ^N00|^N10|^N300|^N390|^N518B|^N70|^N71|^N72|^N76|^N770D|^N771B|^N771L|^H65|^H66|^H67|^I02|
-                                  ^G00|^G01|^G02|^G03|^G04|^G05|^G06|^G07", diagnosis))) %>%
+  filter((icd.version!=10 & grepl("^038|^070|^000|^001|^002|^003|^004|^005|^006|^007|^008|^009|
+                                  ^540|^680|^681|^682|^683|^684|^685|^686|^050|^051|^052|^053|^054|
+                                  ^055|^056|^057|^110|^111|^035|^46|^47|^480|^481|^482|^483|
+                                  ^484|^485|^486|^580|^590|^59500|^59501|^612|^620|^622|^381|^382|
+                                  ^041|^042|^043|^031|^320|^322|^392|^474|^4509|^0451|^0452|^0453|^0454|^0455|
+                                  ^0456|^0457|^0458|^0459|^46|^32300|^07199|
+                                  ^07202|^07501|^07929|^09049|^05201|^05302|^05403|^05501|^05601|
+                                  ^03609|^02701|^06209|^0621|^0622|^0623|^0624|^0625|^0626|^0627|^0628|
+                                  ^0629|^063|^064|^065|^0949", diagnosis))
+         | (icd.version==10 & grepl("^A40|^A41|^B15|^B16|^B17|^B18|^B19|^A00|^A01|^A02|^A03|^A04|^A05|^A06|^A07|^A08|^A09|^K35|
+                                    ^L00|^L01|^L02|^L03|^L04|^L05|^L06|^L07|^L08|^B00|^B01|^B02|^B03|^B04|^B05|^B06|^B07|^B08|^B09|^A46|
+                                    ^J0|^J10|^J11|^J12|^J13|^J14|^J15|^J16|^J17|^J18|^N00|^N10|^N300|^N390|
+                                    ^N518B|^N70|^N71|^N72|^N76|^N770D|^N771B|^N771L|^H65|^H66|^H67|
+                                    ^I02|^G00|^G01|^G02|^G03|^G04|^G05|^G06|^G07|^A17|^A8|^B003|^B004|^B010|^B011|^B020|^B021|^B050|
+                                    ^B051|^B060|^B261|^B262|^B375|^B451|^B582|^B602|^A022C|^A548A|^A548D|^A521A|^A521B|^A229C|
+                                    ^A321|^A504|^A390|^E236A", diagnosis))) %>%
   mutate(infect = 1,
          admit.date = ymd(as.character(admit.date))) %>%
   arrange(id, admit.date) %>%
   group_by(id) %>%
   mutate(first.infect.date = first(admit.date)) %>%
+  arrange(id, first.infect.date) %>%
+  mutate(infect.type = case_when( (icd.version!="10" & grepl("^038",diagnosis)) |
+                                    (icd.version=="10" & grepl("^A40|^A41",diagnosis)) ~ "sepsis",
+                                  (icd.version!="10" & grepl("^070",diagnosis)) |
+                                    (icd.version=="10" & grepl("^B15|^B16|^B17|^B18|^B19",diagnosis)) ~ "hepatitis",
+                                  (icd.version!="10" & grepl("^000|^001|^002|^003|^004|^005|^006|^007|^008|^009|^540",diagnosis)) | 
+                                    (icd.version=="10" & grepl("^A00|^A01|^A02|^A03|^A04|^A05|^A06|^A07|^A08|^A09|^K35",diagnosis)) ~ "gastrointestinal",
+                                  (icd.version!="10" & grepl("^680|^681|^682|^683|^684|^685|^686|^050|^051|^052|^053|
+                                                                  ^054|^055|^056|^057|^110|^111|^035",diagnosis)) |
+                                    (icd.version=="10" & grepl("^L00|^L01|^L02|^L03|^L04|^L05|^L06|^L07|^L08|
+                                                                    ^B00|^B01|^B02|^B03|^B04|^B05|^B06|^B07|^B08|^B09|^A46",diagnosis)) ~ "skin",
+                                  (icd.version!="10" & grepl("^46|^47|^480|^481|^482|^483|^484|^485|^486",diagnosis)) |
+                                    (icd.version=="10" & grepl("^J0|^J10|^J11|^J12|^J13|^J14|^J15|^J16|^J17|^J18",diagnosis)) ~ "respiratory",
+                                  (icd.version!="10" & grepl("^580|^590|^59500|^59501",diagnosis)) |
+                                    (icd.version=="10" & grepl("^N00|^N10|^N300|^N390",diagnosis)) ~ "urological",
+                                  (icd.version!="10" & grepl("^612|^620|^622",diagnosis)) |
+                                    (icd.version=="10" & grepl("^N518B|^N70|^N71|^N72|^N76|^N770D|^N771B|^N771L",diagnosis)) ~ "genital", 
+                                  (icd.version!="10" & grepl("^381|^382",diagnosis)) |
+                                    (icd.version=="10" & grepl("^H65|^H66|^H67",diagnosis)) ~ "otitis media", 
+                                  (icd.version!="10" & grepl("^041|^042|^043|^031|^320|^322|^392|^474|^4509|^0451|^0452|^0453|^0454|^0455|
+                                                                  ^0456|^0457|^0458|^0459|^46|^32300|
+                                                                  ^07199|^07202|^07501|^07929|^09049|^05201|^05302|^05403|
+                                                                  ^05501|^05601|^03609|^02701|^06209|^0621|^0622|^0623|^0624|^0625|
+                                                                  ^0626|^0627|^0628|^0629|^063|^064|^065|^0949",diagnosis)) |
+                                    (icd.version=="10" & grepl("^I02|^G00|^G01|^G02|^G03|^G04|^G05|^G06|^G07|^A17|^A8|^B003|
+                                                                  ^B004|^B010|^B011|^B020|^B021|^B050|^B051|^B060|^B261|^B262|
+                                                                  ^B375|^B451|^B582|^B602|^A022C|^A548A|^A548D|^A521A|^A521B|^A229C|
+                                                                  ^A321|^A504|^A390|^E236A",diagnosis)) ~ "CNS")  
+         ) %>%
   slice(1) %>%
-  select(id,infect,first.infect.date)
+  select(id,infect,first.infect.date,infect.type)
 
 infect <- inner_join(first.scz.date,infect) # inner join together with scz cases
 
@@ -871,12 +927,13 @@ infect <- infect %>%
          infect.childhood = ifelse(age.first.infect <= 15, 1, 0), # only those with infect dx before age 15 years
          infect.pre.scz = ifelse(first.infect.date < first_scz_date, 1, 0)  #  only those with infect dx before scz contact
   ) %>%
-  select(id,infect.childhood,infect.pre.scz)
+  select(id,infect.childhood,infect.pre.scz,infect.type)
 
 scz <- left_join(scz, infect)
 scz <- scz %>%
   mutate(infect.childhood=ifelse(is.na(infect.childhood),0,infect.childhood),
-         infect.pre.scz=ifelse(is.na(infect.pre.scz),0,infect.pre.scz))
+         infect.pre.scz=ifelse(is.na(infect.pre.scz),0,infect.pre.scz),
+         infect.type=ifelse(is.na(infect.type),NA,infect.type))
 
 rm(infect)
 
