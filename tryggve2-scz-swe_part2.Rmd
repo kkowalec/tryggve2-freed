@@ -43,6 +43,7 @@ Examine variables associated with poor outcomes in schizophrenia, using first, t
 + comorbid disorders and medication use ##kk
 + prior personal medical history (somatic disorders) #kk
 + childhood hospitalization
++ congenital malformations
 
 5) Family history of psychiatric disorder ##kk
 + MD, BIP, psychosis, suicide in first-degree relatives
@@ -61,9 +62,7 @@ Examine variables associated with poor outcomes in schizophrenia, using first, t
 ### Step 0: Load R packages
 ```{r R packages}
 library(tidyverse)
-#library(dplyr)
 library(data.table)
-#library(ggplot2)
 library(lubridate)
 library(stringr)
 library(skimr)
@@ -462,12 +461,13 @@ To get at family history of psychiatric disorders,
 1. FHx of SCZ <- NEED REVIEW
 ```{r linking SCZ patients with parents & children}
 # add an indicator of SCZ first
-first.scz.date <- first.scz.date %>%
+scz.list <- scz %>%
+  select(id) %>%
   mutate(scz=1)
 
 # create list of 'parent' and 'child' with index ID being those w SCZ
-scz.parent<- inner_join(first.scz.date, parent, by = "id")
-scz.kid <- inner_join(first.scz.date, child, by = "id")
+scz.parent<- inner_join(scz.list, parent, by = "id")
+scz.kid <- inner_join(scz.list, child, by = "id")
 
 # list of mother IDs
 mother <- scz.parent %>%
@@ -506,20 +506,16 @@ sib <- left_join(tmp, parent, by=c("dad.id", "mom.id")) %>%
 
 ```{r mother SCZ status}
 # link mother's ID with SCZ list
-mother.scz <- inner_join(mother, first.scz.date, by = c("mom.id" = "id")) %>%  
-  select(-dob) %>%
-  rename(mom.scz = scz,
-        first_scz_date.mom = first_scz_date)
+mother.scz <- inner_join(mother, scz.list, by = c("mom.id" = "id")) %>%  
+  rename(mom.scz = scz)
 
 # get link between mother child
 mother.scz <- left_join(mother.scz, parent, by = "mom.id")  # can have multiple records (mother had several children)
 
 # get info on index person's scz
-mother.scz <- left_join(mother.scz, first.scz.date, by = "id") 
+mother.scz <- left_join(mother.scz, scz.list, by = "id") 
 
-# apply criteria: mother's dx (just use first dx) must be before the index person's onset  
 mother.scz <- mother.scz %>%
-  mutate(mom.scz = ifelse(first_scz_date.mom < first_scz_date, 1, 0)) %>% # mom.scz=1 if before index person's onset, otherwise=0 
   arrange(mom.id,desc(mom.scz)) %>% # so that "slice(1)" below selects mom.scz=1 if multiple kids 
   group_by(mom.id) %>%
   slice(1) %>%
@@ -528,20 +524,16 @@ mother.scz <- mother.scz %>%
 
 ```{r father SCZ status}
 # link father's ID with SCZ list
-father.scz <- inner_join(father, first.scz.date, by = c("dad.id" = "id")) %>%
-  select(-dob) %>%
-  rename(dad.scz = scz,
-        first_scz_date.dad= first_scz_date)
+father.scz <- inner_join(father, scz.list, by = c("dad.id" = "id")) %>%
+  rename(dad.scz = scz)
 
 # get link between father child
 father.scz <- left_join(father.scz, parent, by = "dad.id") # can have multiple records (mother had several children)
 
 # get info on index person's scz
-father.scz <- left_join(father.scz, first.scz.date, by = "id") # get info from child scz
+father.scz <- left_join(father.scz, scz.list, by = "id") # get info from child scz
 
-# apply criteria: father's dx (just use first dx) must be before the index person's onset  
 father.scz <- father.scz %>%
-  mutate(dad.scz = ifelse(first_scz_date.dad < first_scz_date, 1, 0)) %>% # dad.scz=1 if before index person's onset, otherwise=0 
   arrange(dad.id,desc(dad.scz)) %>% # so that "slice(1)" below selects dad.scz=1 if multiple kids 
   group_by(dad.id) %>%
   slice(1) %>%
@@ -550,20 +542,16 @@ father.scz <- father.scz %>%
 
 ```{r kid SCZ status}
 # link kid's ID with SCZ list
-kids.scz <- inner_join(kid, first.scz.date, by = c("kid.id" = "id")) %>%
-  select(-dob) %>%
-  rename(kid.scz = scz,
-        first_scz_date.kid = first_scz_date)
+kids.scz <- inner_join(kid, scz.list, by = c("kid.id" = "id")) %>%
+  rename(kid.scz = scz)
 
 # get link betweenkid and index person
 kids.scz <- left_join(kids.scz, child, by = "kid.id") 
 
 # get info on index person's scz
-kids.scz <- left_join(kids.scz, first.scz.date, by = "id")
+kids.scz <- left_join(kids.scz, scz.list, by = "id")
 
-# apply criteria: kid's dx (just use first dx) must be before the index person's onset  
 kids.scz <- kids.scz %>%
-  mutate(kid.scz = ifelse(first_scz_date.kid < first_scz_date, 1, 0)) %>% # kid.scz=1 if before index person's onset, otherwise=0 
   arrange(kid.id,desc(kid.scz)) %>% # so that "slice(1)" below selects kid.scz=1 if both parents
   group_by(kid.id) %>%
   slice(1) %>%
@@ -575,15 +563,15 @@ sibs.scz <- scz.parent %>%
   filter(!is.na(dad.id) & !is.na(mom.id)) %>% # take only relationships with mom and dad ids available
   add_count(dad.id, mom.id) %>% # group by both parent's ids
   filter(n > 1) %>% # select individuals with same parents, i.e. full sibs
-  rename(sib.aff.scz = n)
+  rename(sibs.scz = n)
 
 sibs.scz <- sibs.scz %>%
-  group_by(dad.id, mom.id) %>%
-  arrange(dad.id, mom.id,first_scz_date) %>%
-  mutate(sib1.scz.date = first(first_scz_date)) %>%
-  ungroup() %>%
-  mutate(sibs.scz = ifelse(sib1.scz.date < first_scz_date, 1, 0)) %>% #  only those with scz dx in sibs before scz dx in index case)
-  select(id, sibs.scz)
+  arrange(dad.id, mom.id, sibs.scz) %>%
+  group_by(id) %>%
+  slice(1) %>%
+  mutate(sibs.scz = 1) %>%
+  select(id, sibs.scz) 
+
 ```
 
 ```{r derive FHx of SCZ}
@@ -609,28 +597,25 @@ fhx <- full_join(fhx, sibs.scz,by="id")
 
 # add variable that indicates family history yes or no
 scz.fhx <- fhx %>%
-  # if any of the 4 relatives has SCZ (before index person), then fhx = 1
-  # *WRONG*: if none of the 4 relatives has SCZ (before index person), then fhx = 0   # *CORRECT*:if any of the 4 relatives has no SCZ (Note: after the first condition was applied, this basically grabs those status of 0s or NAs), then fhx = 0
-  # otherwise NAs
   mutate(fhx.scz = case_when(mom.scz==1 | dad.scz==1 | kid.scz==1 | sibs.scz==1 ~ 1,
                          mom.scz==0 | dad.scz==0 | kid.scz==0 | sibs.scz==0 ~ 0,
                          TRUE ~ NA_real_)) %>%  
-  select(-first_scz_date:-mom.id) # drop unwanted columns
+  select(id,fhx.scz,fecund) # drop unwanted columns
 
 # filter duplicates in case any 
 scz.fhx <- scz.fhx %>%
-  select(id, fhx.scz, fecund) %>%
   arrange(id,desc(fhx.scz)) %>%
   group_by(id) %>%
-  slice(1)
+  slice(1) %>%
+  select(id,fhx.scz,fecund)
   
 # check the fhx compared with each relative's status using the following line
-# table(scz.fhx$mom.scz, scz.fhx$fhx-scz, exclude=NULL)
+# table(scz.fhx$mom.scz, scz.fhx$fhx.scz, exclude=NULL)
 ```
 
 ```{r merge with SCZ ind}
 # finally, merge with the main database of SCZ patients
-scz.perind <- left_join(scz.perind, scz.fhx, by = "id")
+scz <- left_join(scz, scz.fhx, by = "id")
 
 ## cleaning up
 
@@ -638,7 +623,7 @@ scz.perind <- left_join(scz.perind, scz.fhx, by = "id")
 fhx -> fhx.scz.wide
 
 # remove unwanted dataframes
-rm(scz.fhx, mother.scz, father.scz, kids.scz, scz.parent,scz.kid, sibs.scz, fhx)  
+rm(scz.fhx, mother.scz, father.scz, kids.scz, scz.parent, scz.kid, sibs.scz, fhx, mother,parent,child,father,kid,sib,tmp)  
 
 ```
 
@@ -1047,7 +1032,6 @@ pop <- fread(pop.f, sep="\t") %>%
   mutate(swe.born = case_when(birth.country == 0 ~ 1,birth.country != 0 ~ 0)) %>% # add an indicator of Sweden born (1=SWE, 0=non-SWE, NAs=unknown)
   mutate(dob = paste(as.character(dob),"15",sep=""))  # add 15th as day of the month
 
-
 education <- left_join(education, pop, by="id")
 
 # recategoris
@@ -1082,27 +1066,56 @@ ggplot(data=edu.sum, aes(x=as.integer(birth.yr), y= EduYear.mean, group = sex)) 
 # clear trend, thus apply standardisation
 
 ### Corresponds to #3, standardize EduYear by birth year and sex
-education.std <-  education.2  %>%
+education.std <- education %>%
   group_by(birth.yr, sex) %>% 
-  mutate(EduYr.std_byr_sex = scale(EduYear)) %>% 
+  mutate(EduYr.std_byr_sex = scale(EduYear, center = TRUE, scale = TRUE)) %>% 
   ungroup() %>% 
   filter(!is.na(EduYr.std_byr_sex)) %>% # standardisation further generated some NAs? <- filter for now
-  select(id, EduYr.std_byr_sex) 
+  select(id, EduYr.std_byr_sex, birth.yr, sex) 
 
 # can check whether standardisation is properly done using the following: 
 education.std %>% 
   group_by(birth.yr, sex) %>% 
   summarise(mean(EduYr.std_byr_sex), sd(EduYr.std_byr_sex))
 
+education.std <- education.std %>%
+  select(id,EduYr.std_byr_sex)
+
+# add in parental information to get parent educational attainment
+scz.list <- scz %>%
+  select(id) %>%
+  mutate(scz=1)
+
+scz.list <- left_join(scz.list,parent) # get MGR and parent info from previous 
+
+# join in education metrics for index case (id)
+scz.list <- left_join(scz.list,education.std, by=c("id"="id")) %>%
+  rename(EduYr.id=EduYr.std_byr_sex)
+
+# join in education metrics for mom of index case (mom.id)
+scz.list <- left_join(scz.list,education.std, by=c("mom.id"="id")) %>%
+  rename(EduYr.mom=EduYr.std_byr_sex)
+
+# join in education metrics for dad of index case (dad.id)
+scz.list <- left_join(scz.list,education.std, by=c("dad.id"="id")) %>%
+  rename(EduYr.dad=EduYr.std_byr_sex)
+
+scz.list <- scz.list %>%
+  select(id, EduYr.id:EduYr.dad)
+
+scz <- left_join(scz,scz.list)
+
+rm(education,education.std,parent,pop,scz.list)
+
 ```
 
 ```{r merge edu year with SCZ ind}
 # finally, merge with the main database of SCZ patients
-scz.perind <- left_join(scz.perind, education.std, by = "id")
+scz <- left_join(scz, education.std, by = "id")
 
 # cleaning up
 # remove unwanted data frames
-rm(education.std)
+rm(education.std,education,pop,edu.sum)
 
 ```
 
@@ -1173,7 +1186,7 @@ rm(parentage.sum, parentage.sum.2)
 ```
 ### Step 8: Exposure - Childhood trauma
 + parental death: cause of death + multigen that occurs <= 15 year (to be consistent with previous definition of psych comorbidity during childhood)
-+ severe medical illness = "severe" would be? age < 18 year?  
++ severe medical illness = "severe" would be? age <= 15 years
 ```{r Childhood trauma}
 
 # need pre-defined dataset: scz.parent, which incl. variables of id, dob, dad.id, mom.id 
@@ -1222,6 +1235,49 @@ scz.perind <-
 # cleaning up
 # remove unwanted data frames
 rm(parent.death)
+
+```
+
+```{r congenital malformations}
+# add in congenital malformations
+# load in medical birth data of child born
+# needed a separate linkage of medical birth register b/c needed list of those born
+# with congenital malform, and did not need info on mom
+
+malf <- fread ("~/tryggve_psych_v_mbr_congenital.tsv") %>%
+  as_tibble() %>%
+  rename(id = LOPNRBARN,  # id of child born
+           congen.malform=MISSB) %>% # had a congenital malformation yes (1) or no (0) or N/A
+  filter(!is.na(congen.malform)) # only keep those with a valid yes or no
+
+# combine with congenital malformations listed in Patient Register
+# The codes used to identify congenital abnormalities were 740–759 in ICD-9 and Q00 to Q99 in ICD-10. 
+# same as MISSB variable from MBR
+# for this variable only, we dont care when diagnosed 
+
+malf.2 <- scz.hdr %>%
+   filter((icd.version!=10 & grepl("^74|^75", diagnosis))
+      | (icd.version==10 & grepl("^Q", diagnosis))) %>%
+  mutate(congen.malform = 1) %>%
+  arrange(id, admit.date) %>%
+  group_by(id) %>%
+  slice(1) %>%
+  select(id,congen.malform)
+
+malf.3 <- full_join(malf,malf.2) # join both sources of congenital malformation data, some repeated
+
+malf.3 <- malf.3 %>%
+  arrange(id, desc(congen.malform)) %>% # remove duplicates, want record stating ever had congenital
+  #malformation, discard record = 0 congenital malform
+  group_by(id) %>%
+  slice(1)
+
+scz <- left_join(scz, malf.3) %>%
+    mutate(congen.malform=ifelse(is.na(congen.malform),0,congen.malform))
+
+rm(malf,malf.2,malf.3)
+
+
 
 ```
   
