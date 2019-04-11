@@ -1280,6 +1280,91 @@ rm(malf,malf.2,malf.3)
 
 
 ```
+
+### Step 8: Exposure - Urbanicity at SCZ dx
+
++ does urban living at time of SCZ dx have an effect on SCZ poor outcomes?
+
++ living in a less urban area at time of SCZ dx is associated with Treatment Resistance as per
+Wimberley et al 2016 Lancet Psych (opposite of SCZ risk)
+
++ split by Capital area (capital and suburb to the capital), Provincial area (>10 000 inhabitants) 
+and Rural area
+
+```{r urbanicity}
+# how to categorize?
+# available for 1982-2013
+# SAMSNAMN = name of SAMS area
+sams_code <- fread ("~/sams_areacodes.tsv", encoding="Latin-1") %>% # to parse Swedish letters correctly
+  as_tibble() %>% 
+  rename(yr=AR,
+         sams=SAMS)
+
+# extract county,first two digits of SAMS code
+sams_code <- sams_code %>%
+  mutate(county=str_extract(sams, "[:digit:]{2}"))
+sams_code$county <- as.integer(sams_code$county)
+
+# get kommun names
+kommun <- fread("~/kommunlankod.csv",sep=",") %>%
+  as_tibble() 
+
+sams_code <- left_join(sams_code,kommun, by=c("county"="Code"))
+
+# some values are missing (e.g. 2, 15,16,11) b/c categorization has changed over time
+# missing values are accurate
+
+# AR	Year (yyyy)
+# LOPNR	Individual number
+# SAMS-area (ccmmnnnn, cc=county, ccmm=municipality)
+sams <- fread ("~/tryggve_psych_v_sams_scz.tsv") %>%
+  as_tibble() %>%
+  select(id, AR, SAMS) %>%
+  rename(yr=AR,
+         sams=SAMS)
+
+# join together
+sams_scz <- left_join(sams,sams_code, by=c("sams","yr"))
+
+# join in date of first scz
+
+sams_scz <- left_join(sams_scz,first.scz.date)
+
+sams_scz <- sams_scz %>%
+  mutate(first_scz_yr = substr(first_scz_date,1,4),
+         dob_yr = substr(dob,1,4))
+
+sams_scz$first_scz_yr <- as.integer(sams_scz$first_scz_yr)
+sams_scz$dob_yr <- as.integer(sams_scz$dob_yr)
+
+sams_scz <- sams_scz %>%
+  mutate(time = yr-first_scz_yr) %>% # calc time b/w SAMS assessment and year of SCZ dx
+  filter(time == "-1" | time == "1") %>% # take only those w SAMS within 1 year of dx
+  arrange(id) %>% # select only 1 measure pp
+  group_by(id) %>% # select only 1 measure pp
+  slice(1) %>%
+  select(id,SAMSNAMN,REGFAM,GRUPP,Name) # select needed variables
+
+# samsname is essentially useless - there are >4000 types
+
+# REGFAM
+#    1     2     3     4     5 
+#24926 18343  5568  1311  1065
+
+# GRUPP
+#    1     2     3     4     5     6     7     8     9    10 
+# 11653  6238 15365  1148  3177  1364  4630  1098  4440  2100 
+
+sams_scz <- sams_scz %>%
+  select(id,Name) %>%
+  rename(local_scz_dx=Name)
+
+# link w SCZ files
+
+scz <- left_join(scz,sams_scz)
+
+rm(sams,sams_code,kommun,sams_scz)
+```
   
 ### Check missing data in all exposures
 ```{r missingness}
