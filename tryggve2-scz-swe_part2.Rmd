@@ -926,6 +926,7 @@ rm(infect)
 ### Step 6: Exposure - Education
 + Year 9 grades
 + Educational attainment
+
 ```{r year 9 grade}
 # check summary of year 9 grade by year
 grades %>% 
