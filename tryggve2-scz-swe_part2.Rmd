@@ -398,13 +398,13 @@ int.dis <- hdr %>%
   rename(nintdiscontacts = n) %>% # rename n 
   mutate(first.intdis.date = first(admit.date)) %>%
   slice(1) %>%
-  select(id, sui, nintdiscontacts, first.intdis.date)
+  select(id, int.dis, nintdiscontacts, first.intdis.date)
 
 # then merge with individuals with SCZ 
 scz.intdis <- inner_join(first.scz.date,int.dis, by="id") %>% # inner join together with scz cases
   mutate(age.first.intdis = as.integer((first.intdis.date - dob)/365.25),
-         intdis.childhood = ifelse(age.first.intdis <= 15, 1, 0), # only those with sui dx before age 15 years
-         intdis.pre.scz = ifelse(first.intdis.date < first_scz_date, 1, 0)  #  only those with sui dx before scz contact
+         intdis.childhood = ifelse(age.first.intdis <= 15, 1, 0), # only those with int.dis dx before age 15 years
+         intdis.pre.scz = ifelse(first.intdis.date < first_scz_date, 1, 0)  #  only those with int.dis dx before scz contact
   ) %>%
   select(id, age.first.intdis, nintdiscontacts, intdis.childhood, intdis.pre.scz)
 ```
@@ -905,18 +905,18 @@ infect <- scz.hdr %>%
   slice(1) %>%
   select(id,infect,first.infect.date,infect.type)
 
-infect <- inner_join(first.scz.date,infect) # inner join together with scz cases
+infect <- left_join(first.scz.date,infect) #  join together with scz cases
 
 infect <- infect %>%
   mutate(age.first.infect = as.numeric((first.infect.date - dob)/365.25),
-         infect.childhood = ifelse(age.first.infect <= 15, 1, 0), # only those with infect dx before age 15 years
-         infect.pre.scz = ifelse(first.infect.date < first_scz_date, 1, 0)  #  only those with infect dx before scz contact
-  ) %>%
-  select(id,infect.childhood,infect.pre.scz,infect.type)
+         #infect.childhood = ifelse(age.first.infect <= 15, 1, 0), # only those with infect dx before age 15 years
+         infect.pre.scz = ifelse(first.infect.date < first_scz_date, 1, 0)) %>%  #  only those with infect dx before scz contact
+ filter(infect.pre.scz ==1) %>%
+ select(id,infect.pre.scz,infect.type)
 
 scz <- left_join(scz, infect)
 scz <- scz %>%
-  mutate(infect.childhood=ifelse(is.na(infect.childhood),0,infect.childhood),
+  mutate(#infect.childhood=ifelse(is.na(infect.childhood),0,infect.childhood),
          infect.pre.scz=ifelse(is.na(infect.pre.scz),0,infect.pre.scz),
          infect.type=ifelse(is.na(infect.type),NA,infect.type))
 
@@ -1254,7 +1254,7 @@ malf <- fread ("~/tryggve_psych_v_mbr_congenital.tsv") %>%
 # combine with congenital malformations listed in Patient Register
 # The codes used to identify congenital abnormalities were 740–759 in ICD-9 and Q00 to Q99 in ICD-10. 
 # same as MISSB variable from MBR
-# for this variable only, we dont care when diagnosed 
+# for this variable only, we dont care when diagnosed (i.e. before of after SCZ ok)
 
 malf.2 <- scz.hdr %>%
    filter((icd.version!=10 & grepl("^74|^75", diagnosis))
