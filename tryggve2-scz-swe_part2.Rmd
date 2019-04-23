@@ -1292,7 +1292,7 @@ Wimberley et al 2016 Lancet Psych (opposite of SCZ risk)
 and Rural area
 
 ```{r urbanicity}
-# how to categorize?
+#how to categorize?
 # available for 1982-2013
 # SAMSNAMN = name of SAMS area
 sams_code <- fread ("~/sams_areacodes.tsv", encoding="Latin-1") %>% # to parse Swedish letters correctly
@@ -1306,7 +1306,9 @@ large_mun <- fread ("~/large_municipalities.csv") %>% # list from Amir Sariaslan
 # need further
 
 sams_code <- sams_code %>%
-  mutate(county=str_extract(sams, "[:digit:]{2}"))
+  mutate(county=str_extract(sams, "[:digit:]{2}"),
+         sams_mun = str_extract(sams, "[:digit:]{4}"))
+
 sams_code$county <- as.integer(sams_code$county)
 
 # get kommun names
@@ -1330,6 +1332,13 @@ sams <- fread ("~/tryggve_psych_v_sams_scz.tsv") %>%
 # join together
 sams_scz <- left_join(sams,sams_code, by=c("sams","yr"))
 
+# add flag for large mun
+large_mun <- large_mun %>%
+  mutate(large_municipalities_y = 1)
+
+sams_scz <- left_join(sams_scz, large_mun, by=c("sams_mun"="large_municipalities"))
+sams_scz <- sams_scz %>%
+  mutate(large_municipalities_y = ifelse(is.na(large_municipalities_y),0,large_municipalities_y))
 # join in date of first scz
 
 sams_scz <- left_join(sams_scz,first.scz.date)
@@ -1347,7 +1356,7 @@ sams_scz <- sams_scz %>%
   arrange(id) %>% # select only 1 measure pp
   group_by(id) %>% # select only 1 measure pp
   slice(1) %>%
-  select(id,SAMSNAMN,REGFAM,GRUPP) # select needed variables
+  select(id,SAMSNAMN,REGFAM,GRUPP, large_municipalities_y) # select needed variables
 
 # samsname is essentially useless - there are >4000 types
 
@@ -1360,22 +1369,15 @@ sams_scz <- sams_scz %>%
 # 11653  6238 15365  1148  3177  1364  4630  1098  4440  2100 
 
 sams_scz <- sams_scz %>%
-  select(id,Name) %>%
-  rename(local_scz_dx=Name)
+  select(id,large_municipalities_y) %>%
+  rename(large_munc_sczdx=large_municipalities_y)
 
 # link w SCZ files
 
 scz <- left_join(scz,sams_scz)
 
-rm(sams,sams_code,kommun,sams_scz)
+rm(sams,sams_code,kommun,sams_scz,xscz,large_mun)
 
-# re-categorize into urban vs rural
-# as defined by Wimberley et al Lancet Psych 2016 study on tx resistance in SCZ
-
-# https://en.wikipedia.org/wiki/Counties_of_Sweden
-
-scz <- scz %>%
-  mutate(local_scz_dx_dichot = case_when(local_scz_dx == "Stockholms län" | "Kalmar län" | "Örebro län" | "Uppsala län" | ""))
 ```
   
 ### Check missing data in all exposures
