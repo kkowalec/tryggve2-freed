@@ -64,7 +64,6 @@ Examine variables associated with poor outcomes in schizophrenia, using first, t
 library(tidyverse)
 library(data.table)
 library(lubridate)
-library(stringr)
 library(skimr)
 
 Sys.setenv(TZ="Europe/Stockholm")
@@ -1300,8 +1299,12 @@ sams_code <- fread ("~/sams_areacodes.tsv", encoding="Latin-1") %>% # to parse S
   as_tibble() %>% 
   rename(yr=AR,
          sams=SAMS)
+large_mun <- fread ("~/large_municipalities.csv") %>% # list from Amir Sariaslan
+  as_tibble()
 
-# extract county,first two digits of SAMS code
+# extract county,first two digits of SAMS code - not enough - only gives county
+# need further
+
 sams_code <- sams_code %>%
   mutate(county=str_extract(sams, "[:digit:]{2}"))
 sams_code$county <- as.integer(sams_code$county)
@@ -1344,7 +1347,7 @@ sams_scz <- sams_scz %>%
   arrange(id) %>% # select only 1 measure pp
   group_by(id) %>% # select only 1 measure pp
   slice(1) %>%
-  select(id,SAMSNAMN,REGFAM,GRUPP,Name) # select needed variables
+  select(id,SAMSNAMN,REGFAM,GRUPP) # select needed variables
 
 # samsname is essentially useless - there are >4000 types
 
@@ -1365,6 +1368,14 @@ sams_scz <- sams_scz %>%
 scz <- left_join(scz,sams_scz)
 
 rm(sams,sams_code,kommun,sams_scz)
+
+# re-categorize into urban vs rural
+# as defined by Wimberley et al Lancet Psych 2016 study on tx resistance in SCZ
+
+# https://en.wikipedia.org/wiki/Counties_of_Sweden
+
+scz <- scz %>%
+  mutate(local_scz_dx_dichot = case_when(local_scz_dx == "Stockholms län" | "Kalmar län" | "Örebro län" | "Uppsala län" | ""))
 ```
   
 ### Check missing data in all exposures
