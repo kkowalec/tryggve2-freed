@@ -622,9 +622,15 @@ df <- outcomes %>%
 ```{r}
 analysis <- analysis %>%
   mutate(fhx.scz=ifelse(is.na(fhx.scz),0,fhx.scz),
-         sex = ifelse(sex==1, "M", "F"))
+         sex = ifelse(sex==1, "M", "F"),
+         sui.pre.scz=ifelse(is.na(sui.pre.scz),0,sui.pre.scz),
+         sui.childhood=ifelse(is.na(sui.childhood),0,sui.childhood),
+         intdis.pre.scz=ifelse(is.na(intdis.pre.scz),0,intdis.pre.scz),
+         intdis.childhood=ifelse(is.na(intdis.childhood),0,intdis.childhood),
+         infect.type=ifelse(is.na(infect.type),"no infect",infect.type))
 
 analysis$sex <- as.factor(analysis$sex)
+analysis$infect.type <- as.factor(analysis$infect.type)
 
 # Multivariable model - suicide
 suicide <- glm(suicide_yn ~ sex + age.first.scz + infect.pre.scz +
@@ -655,18 +661,35 @@ exp(cbind("Odds ratio" = coef(hsp), confint.default(hsp, level = 0.95)))
 # Suicides
 summary(coxph(Surv(time_sui, suicide_yn) ~ sex, data=analysis))$conf.int -> row1 
 summary(coxph(Surv(time_sui, suicide_yn) ~ age.first.scz, data=analysis))$conf.int -> row2 
-summary(coxph(Surv(time_sui, suicide_yn) ~ bip.pre.scz, data=analysis))$conf.int -> row4
+summary(coxph(Surv(time_sui, suicide_yn) ~ bip.pre.scz, data=analysis))$conf.int -> row3
+summary(coxph(Surv(time_sui, suicide_yn) ~ anx.pre.scz, data=analysis))$conf.int -> row4
+summary(coxph(Surv(time_sui, suicide_yn) ~ ptsd.pre.scz, data=analysis))$conf.int -> row5
+summary(coxph(Surv(time_sui, suicide_yn) ~ adhd.pre.scz, data=analysis))$conf.int -> row6
+summary(coxph(Surv(time_sui, suicide_yn) ~ ed.pre.scz, data=analysis))$conf.int -> row7
+summary(coxph(Surv(time_sui, suicide_yn) ~ sui.pre.scz, data=analysis))$conf.int -> row8
+summary(coxph(Surv(time_sui, suicide_yn) ~ suds.pre.scz, data=analysis))$conf.int -> row9
+summary(coxph(Surv(time_sui, suicide_yn) ~ ocd.pre.scz, data=analysis))$conf.int -> row10
+summary(coxph(Surv(time_sui, suicide_yn) ~ asd.pre.scz, data=analysis))$conf.int -> row11
+summary(coxph(Surv(time_sui, suicide_yn) ~ mdd.pre.scz, data=analysis))$conf.int -> row12
+summary(coxph(Surv(time_sui, suicide_yn) ~ ai.pre.scz, data=analysis))$conf.int -> row13
+summary(coxph(Surv(time_sui, suicide_yn) ~ cancer.pre.scz, data=analysis))$conf.int -> row14
+summary(coxph(Surv(time_sui, suicide_yn) ~ infect.pre.scz, data=analysis))$conf.int -> row15
+summary(coxph(Surv(time_sui, suicide_yn) ~ congen.malform, data=analysis))$conf.int -> row16
+summary(coxph(Surv(time_sui, suicide_yn) ~ intdis.pre.scz, data=analysis))$conf.int -> row17
+summary(coxph(Surv(time_sui, suicide_yn) ~ large_munc_sczdx, data=analysis))$conf.int -> row18
+summary(coxph(Surv(time_sui, suicide_yn) ~ infect.type, data=analysis))$conf.int -> row19 
+summary(coxph(Surv(time_sui, suicide_yn) ~ EduYr.id, data=analysis))$conf.int -> row20
+summary(coxph(Surv(time_sui, suicide_yn) ~ fhx.scz, data=analysis))$conf.int -> row21
 
-
-summary(coxph(Surv(time_sui, suicide_yn) ~ infect.pre.scz, data=analysis))$conf.int -> row3
-summary(coxph(Surv(time_sui, suicide_yn) ~ sex, data=analysis))$conf.int -> row1 
-summary(coxph(Surv(time_sui, suicide_yn) ~ EduYr.id, data=analysis))$conf.int -> row5
-summary(coxph(Surv(time_sui, suicide_yn) ~ fhx.scz, data=analysis))$conf.int -> row6
 #summary(coxph(Surv(time_sui, suicide_yn) ~ std.grade, data=analysis))$conf.int -> row7
 #summary(coxph(Surv(time_sui, suicide_yn) ~ EduYr.mom, data=analysis))$conf.int -> row8
 #summary(coxph(Surv(time_sui, suicide_yn) ~ EduYr.dad, data=analysis))$conf.int -> row9
 
-rbind(row1,row2,row3,row4,row5,row6) -> cox.univ  
+rbind(row1,row2,row3,row4,row5,row6,row7,row8,row9,row10,row11,row12,row13,row14,row15,
+      row15,row16,row17,row18,row19,row20,row21) -> cox.univ  
+
+rm(row1,row2,row3,row4,row5,row6,row7,row8,row9,row10,row11,row12,row13,row14,
+      row15,row16,row17,row18,row19,row20,row21)
 
 cox.unadj <- as_tibble(cox.univ) %>% 
   mutate(predictors=row.names(cox.univ), adj=0)  %>%
@@ -674,9 +697,13 @@ cox.unadj <- as_tibble(cox.univ) %>%
   select(-HR_neg)
   
 # Cox regression - adjusted
-cox.multi <- summary(coxph(Surv(time_sui, suicide_yn) ~ 
-                             sex + age.first.scz + infect.pre.scz +
-                             psych_pre.scz + EduYr.id + fhx.scz, data=analysis))$conf.int
+cox.multi <- summary(coxph(Surv(time_sui, suicide_yn) ~ sex + age.first.scz +
+                             bip.pre.scz + anx.pre.scz + ptsd.pre.scz + adhd.pre.scz +
+                             ed.pre.scz + sui.pre.scz + suds.pre.scz + ocd.pre.scz +
+                             asd.pre.scz + mdd.pre.scz + ai.pre.scz + cancer.pre.scz +
+                             infect.pre.scz + congen.malform + intdis.pre.scz + 
+                             large_munc_sczdx + infect.type + EduYr.id + fhx.scz,
+                           data=analysis))$conf.int
 
 cox.adj <- as_tibble(cox.multi) %>% 
   mutate(predictors=row.names(cox.multi), adj=1)  %>%
@@ -688,18 +715,39 @@ res <- rbind(cox.unadj, cox.adj)
 # plot OR and 95%CI
 # Create labels for plot
                   
-res$predictors <- factor(res$predictors, levels=rev(c("age.first.scz",
-                                                  "sexM",
-                                                  "psych_pre.scz",
-                                                  "infect.pre.scz",
-                                                  "fhx.scz",
-                                                  "EduYr.id"
-                                                  #"std.grade","EduYr.mom",
-                                                  #"EduYr.dad"
+res$predictors <- factor(res$predictors, levels=rev(c("sexM",
+                                                      "age.first.scz",
+                                                      "bip.pre.scz",
+                                                      "anx.pre.scz",
+                                                      "ptsd.pre.scz",
+                                                      "adhd.pre.scz",
+                                                      "ed.pre.scz",
+                                                      "sui.pre.scz",
+                                                      "suds.pre.scz",
+                                                      "ocd.pre.scz",
+                                                      "asd.pre.scz",
+                                                      "mdd.pre.scz",
+                                                      "ai.pre.scz",
+                                                      "cancer.pre.scz",
+                                                      "infect.pre.scz",
+                                                      "congen.malform",
+                                                      "intdis.pre.scz",
+                                                      "large_munc_sczdx",
+                                                      "infect.typegastrointestinal",
+                                                      "infect.typegenital",
+                                                      "infect.typehepatitis",
+                                                      "infect.typeno infect",
+                                                      "infect.typeotitis media",
+                                                      "infect.typerespiratory",
+                                                      "infect.typesepsis",
+                                                      "infect.typeskin",
+                                                      "infect.typeurological",
+                                                      "EduYr.id",
+                                                      "fhx.scz"
                                                   )))
 
 # put both unadjusted and adjusted estimates into facets, side by side
-labels <- c(`0` = "unadjusted (N=13806, event=1795)", `1` = "adjusted (N=13450, event=1720)")
+labels <- c(`0` = "unadjusted (N=13806, event=1795)", `1` = "adjusted (N=13157, event=1685)")
 
 fig2 <-ggplot(data=res) +
         geom_pointrange(aes(x=predictors, y=HR, ymin=HR_95L, ymax=HR_95H, col=as.factor(adj))) +
@@ -710,23 +758,44 @@ fig2 <-ggplot(data=res) +
         x="", y="Hazard Ratio (95% CI)") +
         theme_bw() +theme(legend.position="none")
 
-ggsave(file="~/Documents/projects/5.tryggve2/tryggve2/paper1/fig_sui2_18apr19.png",fig2, width=8, height=6)
+ggsave(file="~/Documents/projects/5.tryggve2/tryggve2/paper1/fig_sui2_24apr19.png",fig2, width=8, height=6)
 
 
 ```
 ### Step 9: Cox regression-Premature mortality
 ```{r}
+
 summary(coxph(Surv(time_pd, pd_yn) ~ sex, data=analysis))$conf.int -> row1 
 summary(coxph(Surv(time_pd, pd_yn) ~ age.first.scz, data=analysis))$conf.int -> row2 
-summary(coxph(Surv(time_pd, pd_yn) ~ infect.pre.scz, data=analysis))$conf.int -> row3
-summary(coxph(Surv(time_pd, pd_yn) ~ psych_pre.scz, data=analysis))$conf.int -> row4
-summary(coxph(Surv(time_pd, pd_yn) ~ EduYr.id, data=analysis))$conf.int -> row5
-summary(coxph(Surv(time_pd, pd_yn) ~ fhx.scz, data=analysis))$conf.int -> row6
+summary(coxph(Surv(time_pd, pd_yn) ~ bip.pre.scz, data=analysis))$conf.int -> row3
+summary(coxph(Surv(time_pd, pd_yn) ~ anx.pre.scz, data=analysis))$conf.int -> row4
+summary(coxph(Surv(time_pd, pd_yn) ~ ptsd.pre.scz, data=analysis))$conf.int -> row5
+summary(coxph(Surv(time_pd, pd_yn) ~ adhd.pre.scz, data=analysis))$conf.int -> row6
+summary(coxph(Surv(time_pd, pd_yn) ~ ed.pre.scz, data=analysis))$conf.int -> row7
+summary(coxph(Surv(time_pd, pd_yn) ~ sui.pre.scz, data=analysis))$conf.int -> row8
+summary(coxph(Surv(time_pd, pd_yn) ~ suds.pre.scz, data=analysis))$conf.int -> row9
+summary(coxph(Surv(time_pd, pd_yn) ~ ocd.pre.scz, data=analysis))$conf.int -> row10
+summary(coxph(Surv(time_pd, pd_yn) ~ asd.pre.scz, data=analysis))$conf.int -> row11
+summary(coxph(Surv(time_pd, pd_yn) ~ mdd.pre.scz, data=analysis))$conf.int -> row12
+summary(coxph(Surv(time_pd, pd_yn) ~ ai.pre.scz, data=analysis))$conf.int -> row13
+summary(coxph(Surv(time_pd, pd_yn) ~ cancer.pre.scz, data=analysis))$conf.int -> row14
+summary(coxph(Surv(time_pd, pd_yn) ~ infect.pre.scz, data=analysis))$conf.int -> row15
+summary(coxph(Surv(time_pd, pd_yn) ~ congen.malform, data=analysis))$conf.int -> row16
+summary(coxph(Surv(time_pd, pd_yn) ~ intdis.pre.scz, data=analysis))$conf.int -> row17
+summary(coxph(Surv(time_pd, pd_yn) ~ large_munc_sczdx, data=analysis))$conf.int -> row18
+summary(coxph(Surv(time_pd, pd_yn) ~ infect.type, data=analysis))$conf.int -> row19 
+summary(coxph(Surv(time_pd, pd_yn) ~ EduYr.id, data=analysis))$conf.int -> row20
+summary(coxph(Surv(time_pd, pd_yn) ~ fhx.scz, data=analysis))$conf.int -> row21
+
 #summary(coxph(Surv(time_pd, pd_yn) ~ std.grade, data=analysis))$conf.int -> row7
 #summary(coxph(Surv(time_pd, pd_yn) ~ EduYr.mom, data=analysis))$conf.int -> row8
 #summary(coxph(Surv(time_pd, pd_yn) ~ EduYr.dad, data=analysis))$conf.int -> row9
 
-rbind(row1,row2,row3,row4,row5,row6) -> cox.univ  
+rbind(row1,row2,row3,row4,row5,row6,row7,row8,row9,row10,row11,row12,row13,row14,row15,
+      row15,row16,row17,row18,row19,row20,row21) -> cox.univ  
+
+rm(row1,row2,row3,row4,row5,row6,row7,row8,row9,row10,row11,row12,row13,row14,
+   row15,row16,row17,row18,row19,row20,row21)
 
 cox.unadj <- as_tibble(cox.univ) %>% 
   mutate(predictors=row.names(cox.univ), adj=0)  %>%
@@ -734,11 +803,14 @@ cox.unadj <- as_tibble(cox.univ) %>%
   select(-HR_neg)
 
 # Cox regression - adjusted
-cox.multi <- summary(coxph(Surv(time_pd, pd_yn) ~ 
-                             sex + age.first.scz + infect.pre.scz +
-                             psych_pre.scz +
-                             fhx.scz + EduYr.id, data=analysis))$conf.int
-#z_edlevel 
+cox.multi <- summary(coxph(Surv(time_pd, pd_yn) ~ sex + age.first.scz +
+                             bip.pre.scz + anx.pre.scz + ptsd.pre.scz + adhd.pre.scz +
+                             ed.pre.scz + sui.pre.scz + suds.pre.scz + ocd.pre.scz +
+                             asd.pre.scz + mdd.pre.scz + ai.pre.scz + cancer.pre.scz +
+                             infect.pre.scz + congen.malform + intdis.pre.scz + 
+                             large_munc_sczdx + infect.type + EduYr.id + fhx.scz,
+                           data=analysis))$conf.int
+
 cox.adj <- as_tibble(cox.multi) %>% 
   mutate(predictors=row.names(cox.multi), adj=1)  %>%
   rename("HR"="exp(coef)", "HR_neg"="exp(-coef)", "HR_95L"="lower .95", "HR_95H"="upper .95") %>% 
@@ -749,19 +821,39 @@ res <- rbind(cox.unadj, cox.adj)
 # plot OR and 95%CI
 # Create labels for plot
 
-res$predictors <- factor(res$predictors, levels=rev(c("age.first.scz",
-                                                      "sexM",
-                                                      "psych_pre.scz",
+res$predictors <- factor(res$predictors, levels=rev(c("sexM",
+                                                      "age.first.scz",
+                                                      "bip.pre.scz",
+                                                      "anx.pre.scz",
+                                                      "ptsd.pre.scz",
+                                                      "adhd.pre.scz",
+                                                      "ed.pre.scz",
+                                                      "sui.pre.scz",
+                                                      "suds.pre.scz",
+                                                      "ocd.pre.scz",
+                                                      "asd.pre.scz",
+                                                      "mdd.pre.scz",
+                                                      "ai.pre.scz",
+                                                      "cancer.pre.scz",
                                                       "infect.pre.scz",
-                                                      "fhx.scz",
-                                                      "EduYr.id"
-                                                      #"std.grade",
-                                                      #"EduYr.mom",
-                                                      #"EduYr.dad"
-                                                      )))
+                                                      "congen.malform",
+                                                      "intdis.pre.scz",
+                                                      "large_munc_sczdx",
+                                                      "infect.typegastrointestinal",
+                                                      "infect.typegenital",
+                                                      "infect.typehepatitis",
+                                                      "infect.typeno infect",
+                                                      "infect.typeotitis media",
+                                                      "infect.typerespiratory",
+                                                      "infect.typesepsis",
+                                                      "infect.typeskin",
+                                                      "infect.typeurological",
+                                                      "EduYr.id",
+                                                      "fhx.scz"
+)))
 
 # put both unadjusted and adjusted estimates into facets, side by side
-labels <- c(`0` = "unadjusted (N=13806)", `1` = "adjusted (N=13450, event=1121))")
+labels <- c(`0` = "unadjusted (N=13806)", `1` = "adjusted (N=13157, event=1072))")
 
 fig2 <-ggplot(data=res) + # take away sex for now
   geom_pointrange(aes(x=predictors, y=HR, ymin=HR_95L, ymax=HR_95H, col=as.factor(adj))) +
@@ -772,24 +864,45 @@ fig2 <-ggplot(data=res) + # take away sex for now
        x="", y="Hazard Ratio (95% CI)") +
   theme_bw() +theme(legend.position="none")
 
-ggsave(file="~/Documents/projects/5.tryggve2/tryggve2/paper1/fig_prematuremort_18apr19.png",fig2, width=8, height=6)
+ggsave(file="~/Documents/projects/5.tryggve2/tryggve2/paper1/fig_prematuremort_24apr19.png",fig2, width=8, height=6)
 
 
 ```
 ### Step 10: Cox regression-Long hospitalisation
 ```{r}
+
 summary(coxph(Surv(time_hsp, hsp_yn) ~ sex, data=analysis))$conf.int -> row1 
 summary(coxph(Surv(time_hsp, hsp_yn) ~ age.first.scz, data=analysis))$conf.int -> row2 
-summary(coxph(Surv(time_hsp, hsp_yn) ~ infect.pre.scz, data=analysis))$conf.int -> row3
-summary(coxph(Surv(time_hsp, hsp_yn) ~ psych_pre.scz, data=analysis))$conf.int -> row4
-summary(coxph(Surv(time_hsp, hsp_yn) ~ EduYr.id, data=analysis))$conf.int -> row5
-summary(coxph(Surv(time_hsp, hsp_yn) ~ fhx.scz, data=analysis))$conf.int -> row6
+summary(coxph(Surv(time_hsp, hsp_yn) ~ bip.pre.scz, data=analysis))$conf.int -> row3
+summary(coxph(Surv(time_hsp, hsp_yn) ~ anx.pre.scz, data=analysis))$conf.int -> row4
+summary(coxph(Surv(time_hsp, hsp_yn) ~ ptsd.pre.scz, data=analysis))$conf.int -> row5
+summary(coxph(Surv(time_hsp, hsp_yn) ~ adhd.pre.scz, data=analysis))$conf.int -> row6
+summary(coxph(Surv(time_hsp, hsp_yn) ~ ed.pre.scz, data=analysis))$conf.int -> row7
+summary(coxph(Surv(time_hsp, hsp_yn) ~ sui.pre.scz, data=analysis))$conf.int -> row8
+summary(coxph(Surv(time_hsp, hsp_yn) ~ suds.pre.scz, data=analysis))$conf.int -> row9
+summary(coxph(Surv(time_hsp, hsp_yn) ~ ocd.pre.scz, data=analysis))$conf.int -> row10
+summary(coxph(Surv(time_hsp, hsp_yn) ~ asd.pre.scz, data=analysis))$conf.int -> row11
+summary(coxph(Surv(time_hsp, hsp_yn) ~ mdd.pre.scz, data=analysis))$conf.int -> row12
+summary(coxph(Surv(time_hsp, hsp_yn) ~ ai.pre.scz, data=analysis))$conf.int -> row13
+summary(coxph(Surv(time_hsp, hsp_yn) ~ cancer.pre.scz, data=analysis))$conf.int -> row14
+summary(coxph(Surv(time_hsp, hsp_yn) ~ infect.pre.scz, data=analysis))$conf.int -> row15
+summary(coxph(Surv(time_hsp, hsp_yn) ~ congen.malform, data=analysis))$conf.int -> row16
+summary(coxph(Surv(time_hsp, hsp_yn) ~ intdis.pre.scz, data=analysis))$conf.int -> row17
+summary(coxph(Surv(time_hsp, hsp_yn) ~ large_munc_sczdx, data=analysis))$conf.int -> row18
+summary(coxph(Surv(time_hsp, hsp_yn) ~ infect.type, data=analysis))$conf.int -> row19 
+summary(coxph(Surv(time_hsp, hsp_yn) ~ EduYr.id, data=analysis))$conf.int -> row20
+summary(coxph(Surv(time_hsp, hsp_yn) ~ fhx.scz, data=analysis))$conf.int -> row21
+summary(coxph(Surv(time_hsp, hsp_yn) ~ birthyear, data=analysis))$conf.int -> row22
+
 #summary(coxph(Surv(time_hsp, hsp_yn) ~ std.grade, data=analysis))$conf.int -> row7
 #summary(coxph(Surv(time_hsp, hsp_yn) ~ EduYr.mom, data=analysis))$conf.int -> row8
 #summary(coxph(Surv(time_hsp, hsp_yn) ~ EduYr.dad, data=analysis))$conf.int -> row9
-summary(coxph(Surv(time_hsp, hsp_yn) ~ birthyear, data=analysis))$conf.int -> row10
 
-rbind(row1,row2,row3,row4,row5,row6,row10) -> cox.univ  
+rbind(row1,row2,row3,row4,row5,row6,row7,row8,row9,row10,row11,row12,row13,row14,row15,
+      row15,row16,row17,row18,row19,row20,row21,row22) -> cox.univ  
+
+rm(row1,row2,row3,row4,row5,row6,row7,row8,row9,row10,row11,row12,row13,row14,
+   row15,row16,row17,row18,row19,row20,row21,row22)
 
 cox.unadj <- as_tibble(cox.univ) %>% 
   mutate(predictors=row.names(cox.univ), adj=0)  %>%
@@ -797,11 +910,14 @@ cox.unadj <- as_tibble(cox.univ) %>%
   select(-HR_neg)
 
 # Cox regression - adjusted
-cox.multi <- summary(coxph(Surv(time_hsp, hsp_yn) ~ 
-                             sex + age.first.scz + infect.pre.scz +
-                             psych_pre.scz + EduYr.id +
-                             birthyear + fhx.scz, data=analysis))$conf.int
-#z_edlevel 
+cox.multi <- summary(coxph(Surv(time_hsp, hsp_yn) ~ sex + age.first.scz +
+                             bip.pre.scz + anx.pre.scz + ptsd.pre.scz + adhd.pre.scz +
+                             ed.pre.scz + sui.pre.scz + suds.pre.scz + ocd.pre.scz +
+                             asd.pre.scz + mdd.pre.scz + ai.pre.scz + cancer.pre.scz +
+                             infect.pre.scz + congen.malform + intdis.pre.scz + 
+                             large_munc_sczdx + infect.type + EduYr.id + fhx.scz + birthyear,
+                           data=analysis))$conf.int
+
 cox.adj <- as_tibble(cox.multi) %>% 
   mutate(predictors=row.names(cox.multi), adj=1)  %>%
   rename("HR"="exp(coef)", "HR_neg"="exp(-coef)", "HR_95L"="lower .95", "HR_95H"="upper .95") %>% 
@@ -812,19 +928,40 @@ res <- rbind(cox.unadj, cox.adj)
 # plot OR and 95%CI
 # Create labels for plot
 
-res$predictors <- factor(res$predictors, levels=rev(c("age.first.scz",
-                                                      "sexM",
-                                                      "psych_pre.scz",
+res$predictors <- factor(res$predictors, levels=rev(c("sexM",
+                                                      "age.first.scz",
+                                                      "bip.pre.scz",
+                                                      "anx.pre.scz",
+                                                      "ptsd.pre.scz",
+                                                      "adhd.pre.scz",
+                                                      "ed.pre.scz",
+                                                      "sui.pre.scz",
+                                                      "suds.pre.scz",
+                                                      "ocd.pre.scz",
+                                                      "asd.pre.scz",
+                                                      "mdd.pre.scz",
+                                                      "ai.pre.scz",
+                                                      "cancer.pre.scz",
                                                       "infect.pre.scz",
-                                                      "fhx.scz",
-                                                       "EduYr.id",
-                                                      #"std.grade",
-                                                      #"EduYr.mom",
-                                                      #"EduYr.dad",
-                                                      "birthyear")))
+                                                      "congen.malform",
+                                                      "intdis.pre.scz",
+                                                      "large_munc_sczdx",
+                                                      "infect.typegastrointestinal",
+                                                      "infect.typegenital",
+                                                      "infect.typehepatitis",
+                                                      "infect.typeno infect",
+                                                      "infect.typeotitis media",
+                                                      "infect.typerespiratory",
+                                                      "infect.typesepsis",
+                                                      "infect.typeskin",
+                                                      "infect.typeurological",
+                                                      "EduYr.id",
+                                                      "fhx.scz", "birthyear"
+)))
+
 
 # put both unadjusted and adjusted estimates into facets, side by side
-labels <- c(`0` = "unadjusted (N=13806)", `1` = "adjusted (N=13450, event=4112)")
+labels <- c(`0` = "unadjusted (N=13806)", `1` = "adjusted (N=13157, event=3910)")
 
 fig2 <-ggplot(data=res) + # take away sex for now
   geom_pointrange(aes(x=predictors, y=HR, ymin=HR_95L, ymax=HR_95H, col=as.factor(adj))) +
@@ -835,7 +972,7 @@ fig2 <-ggplot(data=res) + # take away sex for now
        x="", y="Hazard Ratio (95% CI)") +
   theme_bw() +theme(legend.position="none")
 
-ggsave(file="~/Documents/projects/5.tryggve2/tryggve2/paper1/fig_longHSP_18apr19.png",fig2, width=8, height=6)
+ggsave(file="~/Documents/projects/5.tryggve2/tryggve2/paper1/fig_longHSP_24apr19.png",fig2, width=8, height=6)
 
 
 ```
