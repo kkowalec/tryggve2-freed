@@ -153,7 +153,7 @@ rm(sui.a, sui.c)
 
 
 ### Step 2: Outcome 3: Premature mortality
-+ Mortality which occurs by age 56 years or earlier (any causes) (premature death=56 years as defined by Fazel, Lichtenstein, et al, Lancet Psychiatry 2014)
++ Mortality which occurs by age 56 years or earlier (any causes). Premature mortality was defined as death before the age of 56 years, as defined by Fazel, Lichtenstein, et al, Lancet Psychiatry 2014.
 + Could also take life expectancy in Sweden for both males and females in 2016 (82.2 years), less 25 years (expected number of years less for someone w SCZ) = 82-25 = 57 years
 ```{r}
 premature <- scz.cod %>%
