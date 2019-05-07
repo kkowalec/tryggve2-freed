@@ -329,6 +329,45 @@ analysis <- left_join(analysis,trs)
 ```
 
 
+### Step 5b: Derive composite outcome for analysis (any of suicide, hsp, death)
+```{r}
+
+anyout <- studypop %>%
+  arrange(id) %>%
+  mutate(end.follow = ymd("2013-12-31")) %>%
+  gather("date.outcome1","date.outcome2", "date.outcome3", "date.outcome4", "dod", "first.emigrate.date","end.follow",
+         key = "outcome",
+         value = "date") %>%
+ # select(id, outcome:date, scz:psych_pre.scz) %>%
+  arrange(id,date) %>%
+  group_by(id) %>%
+  mutate(date.anyoutcome.reached = first(date)) %>%
+  select(id, date.anyoutcome.reached, outcome1:date, first_scz_date) %>%
+  slice(1) %>%
+  mutate(time_any = as.numeric(date.anyoutcome.reached - first_scz_date)/365.25) %>% # calculate time 
+  filter(time_any >= 0) 
+
+anyout$outcome <- as.factor(anyout$outcome)
+
+anyout <- anyout %>%
+  mutate(outcome_yn = ifelse(outcome!="end.follow" & outcome!="dod" &
+                            outcome!="first.emigrate.date", 1, 0),
+        outcome_yn_cat = case_when(outcome=="date.outcome1"~"suicide.attempt",
+                            outcome=="date.outcome2"~"suicide.complete",
+                            outcome=="date.outcome3"~"premature.mortality",
+                            outcome=="date.outcome4"~"hospitalised.100days",
+                            outcome=="dod"~"died(not premature)",
+                            outcome=="end.follow"~"end.of.follow",
+                            outcome=="first.emigrate.date"~"emigrated",
+                             TRUE ~ NA_character_)
+  ) %>%
+  select(id,date.anyoutcome.reached,time_any,outcome_yn,outcome_yn_cat)
+
+# merge back w exposures
+analysis <- left_join(analysis,anyout)
+
+```
+
 ### Step 6: Descriptive tables
 ```{r}
 # only for composite outcomes, not for specific outcomes        
@@ -1084,6 +1123,126 @@ fig2 <-ggplot(data=res) +
   theme_bw() +theme(legend.position="none")
 
 ggsave(file="~/Documents/projects/5.tryggve2/tryggve2/paper1/fig_trs_29mar19.png",fig2, width=8, height=6)
+
+
+```
+### Step 12: Cox regression-Composite outcome
+```{r}
+
+summary(coxph(Surv(time_any, outcome_yn) ~ sex, data=analysis))$conf.int -> row1 
+summary(coxph(Surv(time_any, outcome_yn) ~ age.first.scz, data=analysis))$conf.int -> row2 
+summary(coxph(Surv(time_any, outcome_yn) ~ bip.pre.scz, data=analysis))$conf.int -> row3
+summary(coxph(Surv(time_any, outcome_yn) ~ anx.pre.scz, data=analysis))$conf.int -> row4
+summary(coxph(Surv(time_any, outcome_yn) ~ ptsd.pre.scz, data=analysis))$conf.int -> row5
+summary(coxph(Surv(time_any, outcome_yn) ~ adhd.pre.scz, data=analysis))$conf.int -> row6
+summary(coxph(Surv(time_any, outcome_yn) ~ ed.pre.scz, data=analysis))$conf.int -> row7
+summary(coxph(Surv(time_any, outcome_yn) ~ sui.pre.scz, data=analysis))$conf.int -> row8
+summary(coxph(Surv(time_any, outcome_yn) ~ suds.pre.scz, data=analysis))$conf.int -> row9
+summary(coxph(Surv(time_any, outcome_yn) ~ ocd.pre.scz, data=analysis))$conf.int -> row10
+summary(coxph(Surv(time_any, outcome_yn) ~ asd.pre.scz, data=analysis))$conf.int -> row11
+summary(coxph(Surv(time_any, outcome_yn) ~ mdd.pre.scz, data=analysis))$conf.int -> row12
+summary(coxph(Surv(time_any, outcome_yn) ~ ai.pre.scz, data=analysis))$conf.int -> row13
+summary(coxph(Surv(time_any, outcome_yn) ~ cancer.pre.scz, data=analysis))$conf.int -> row14
+summary(coxph(Surv(time_any, outcome_yn) ~ congen.malform, data=analysis))$conf.int -> row16
+summary(coxph(Surv(time_any, outcome_yn) ~ intdis.pre.scz, data=analysis))$conf.int -> row17
+summary(coxph(Surv(time_any, outcome_yn) ~ large_munc_sczdx, data=analysis))$conf.int -> row18
+summary(coxph(Surv(time_any, outcome_yn) ~ relevel(infect.type,5), data=analysis))$conf.int -> row19 
+summary(coxph(Surv(time_any, outcome_yn) ~ EduYr.id, data=analysis))$conf.int -> row20
+summary(coxph(Surv(time_any, outcome_yn) ~ fhx.scz, data=analysis))$conf.int -> row21
+summary(coxph(Surv(time_any, outcome_yn) ~ birthyear, data=analysis))$conf.int -> row22
+
+rbind(row1,row2,row3,row4,row5,row6,row7,row8,row9,row10,row11,row12,row13,row14,
+      row16,row17,row18,row19,row20,row21,row22) -> cox.univ  
+
+rm(row1,row2,row3,row4,row5,row6,row7,row8,row9,row10,row11,row12,row13,row14,
+   row16,row17,row18,row19,row20,row21,row22)
+
+cox.unadj <- as_tibble(cox.univ) %>% 
+  mutate(predictors=row.names(cox.univ), adj=0)  %>%
+  rename("HR"="exp(coef)", "HR_neg"="exp(-coef)", "HR_95L"="lower .95", "HR_95H"="upper .95") %>% 
+  select(-HR_neg)
+
+# Cox regression - adjusted
+cox.multi <- summary(coxph(Surv(time_any, outcome_yn) ~ sex + age.first.scz +
+                             bip.pre.scz + anx.pre.scz + ptsd.pre.scz + adhd.pre.scz +
+                             ed.pre.scz + sui.pre.scz + suds.pre.scz + ocd.pre.scz +
+                             asd.pre.scz + mdd.pre.scz + ai.pre.scz + cancer.pre.scz +
+                             congen.malform + intdis.pre.scz + 
+                             large_munc_sczdx + relevel(infect.type,5) + EduYr.id + fhx.scz + birthyear,
+                           data=analysis))$conf.int
+
+cox.adj <- as_tibble(cox.multi) %>% 
+  mutate(predictors=row.names(cox.multi), adj=1)  %>%
+  rename("HR"="exp(coef)", "HR_neg"="exp(-coef)", "HR_95L"="lower .95", "HR_95H"="upper .95") %>% 
+  select(-HR_neg)
+
+res <- rbind(cox.unadj, cox.adj)
+
+res <- res %>%
+  mutate(predictors = case_when(predictors=="sexM" ~ "Male sex",
+                                predictors=="EduYr.id" ~ "EduYears",
+                                predictors=="relevel(infect.type, 5)gastrointestinal"~"gastrointestinfect.pre.scz",
+                                predictors=="relevel(infect.type, 5)genital"~"genitalinfect.pre.scz",
+                                predictors=="relevel(infect.type, 5)hepatitis"~"hepatitis.pre.scz",
+                                predictors=="relevel(infect.type, 5)CNS"~"CNVinfect.pre.scz",
+                                predictors=="relevel(infect.type, 5)otitis media"~"earinfect.pre.scz",
+                                predictors== "relevel(infect.type, 5)respiratory"~"respiratoryinfec.pre.scz",
+                                predictors=="relevel(infect.type, 5)sepsis"~"sepsis.pre.scz",
+                                predictors== "relevel(infect.type, 5)skin"~"skininfect.pre.scz",
+                                predictors== "relevel(infect.type, 5)urological"~"urologicalinfect.pre.scz",
+                                predictors=="large_munc_sczdx"~"urban.first.scz",
+                                predictors=="ai.pre.scz"~"autoimmune.pre.scz",
+                                TRUE~predictors))
+
+# plot OR and 95%CI
+# Create labels for plot
+
+res$predictors <- factor(res$predictors, levels=rev(c("Male sex",
+                                                      "age.first.scz",
+                                                      "urban.first.scz",
+                                                      "EduYears",
+                                                      "fhx.scz",
+                                                      "bip.pre.scz",
+                                                      "mdd.pre.scz",
+                                                      "anx.pre.scz",
+                                                      "ptsd.pre.scz",
+                                                      "adhd.pre.scz",
+                                                      "asd.pre.scz",
+                                                      "ed.pre.scz",
+                                                      "sui.pre.scz",
+                                                      "suds.pre.scz",
+                                                      "ocd.pre.scz",
+                                                      "congen.malform",
+                                                      "intdis.pre.scz",
+                                                      "autoimmune.pre.scz",
+                                                      "cancer.pre.scz",
+                                                      "gastrointestinfect.pre.scz",
+                                                      "genitalinfect.pre.scz",
+                                                      "hepatitis.pre.scz",
+                                                      "CNVinfect.pre.scz",
+                                                      "earinfect.pre.scz",
+                                                      "respiratoryinfec.pre.scz",
+                                                      "skininfect.pre.scz",
+                                                      "sepsis.pre.scz",
+                                                      "urologicalinfect.pre.scz",
+                                                      "birthyear"
+)))
+
+# put both unadjusted and adjusted estimates into facets, side by side
+labels <- c(`0` = "unadjusted (N=13806)", `1` = "adjusted (N=13157, event=3910)")
+
+fig2 <-ggplot(data=res) + 
+  geom_pointrange(aes(x=predictors, y=HR, ymin=HR_95L, ymax=HR_95H, col=as.factor(adj))) +
+  facet_grid(cols = vars(adj), labeller = labeller(adj=labels)) + 
+  geom_hline(yintercept=1, lty=3) +  # add a dotted line at x=1 after flip
+  coord_flip() +  # flip coordinates (puts labels on y axis)
+  labs(title = "Predictors of long hospitalisation (100 days) in SCZ (birth cohort: 1958 to 1993)",
+       x="", y="Hazard Ratio (95% CI)") +
+  theme_bw() +
+  theme(legend.position="none") +
+  scale_y_continuous(limits=c(0,8))
+
+ggsave(file="~/Documents/projects/5.tryggve2/tryggve2/paper1/fig_any_7May19.png",fig2, width=8, height=6)
 
 
 ```
