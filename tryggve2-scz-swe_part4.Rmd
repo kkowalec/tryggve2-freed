@@ -1229,18 +1229,18 @@ res$predictors <- factor(res$predictors, levels=rev(c("Male sex",
 )))
 
 # put both unadjusted and adjusted estimates into facets, side by side
-labels <- c(`0` = "unadjusted (N=13806)", `1` = "adjusted (N=13157, event=3910)")
+labels <- c(`0` = "unadjusted (N=13806)", `1` = "adjusted (N=13157, event=5418)")
 
 fig2 <-ggplot(data=res) + 
   geom_pointrange(aes(x=predictors, y=HR, ymin=HR_95L, ymax=HR_95H, col=as.factor(adj))) +
   facet_grid(cols = vars(adj), labeller = labeller(adj=labels)) + 
   geom_hline(yintercept=1, lty=3) +  # add a dotted line at x=1 after flip
   coord_flip() +  # flip coordinates (puts labels on y axis)
-  labs(title = "Predictors of long hospitalisation (100 days) in SCZ (birth cohort: 1958 to 1993)",
+  labs(title = "Predictors of poor outcome in SCZ (birth cohort: 1958 to 1993)",
        x="", y="Hazard Ratio (95% CI)") +
   theme_bw() +
   theme(legend.position="none") +
-  scale_y_continuous(limits=c(0,8))
+  scale_y_continuous(limits=c(0,3))
 
 ggsave(file="~/Documents/projects/5.tryggve2/tryggve2/paper1/fig_any_7May19.png",fig2, width=8, height=6)
 
