@@ -70,11 +70,8 @@ analysis
 ### Step 0: Load R packages
 ```{r R packages}
 library(tidyverse)
-#library(dplyr)
 library(data.table)
-#library(ggplot2)
 library(lubridate)
-#library(stringr)
 library(skimr)
 
 Sys.setenv(TZ="Europe/Stockholm")
@@ -276,11 +273,13 @@ y12 <- fread("/Volumes/Common/projects/S3/S3_Research/tryggve2/drug/tryggve_psyc
   as_tibble() 
 y13 <- fread("/Volumes/Common/projects/S3/S3_Research/tryggve2/drug/tryggve_psych_cloz_y13.tsv", sep="\t") %>%
   as_tibble() 
-y14 <- fread("/Volumes/Common/projects/S3/S3_Research/tryggve2/drug/tryggve_psych_cloz_y14.tsv", sep="\t") %>%
-  as_tibble() 
 
-outcome5 <- rbind(y05,y06,y07,y08,y09,y10,y11,y12,y13,y14)
-rm(y05,y06,y07,y08,y09,y10,y11,y12,y13,y14)
+#dont use 2014, b/c other data only goes up to 12-31-2013
+#y14 <- fread("/Volumes/Common/projects/S3/S3_Research/tryggve2/drug/tryggve_psych_cloz_y14.tsv", sep="\t") %>%
+ # as_tibble() 
+
+outcome5 <- rbind(y05,y06,y07,y08,y09,y10,y11,y12,y13)
+rm(y05,y06,y07,y08,y09,y10,y11,y12,y13)
 
 outcome5 <- outcome5 %>%
   rename(id=LOPNR,
@@ -298,16 +297,18 @@ xoutcome5 <- xoutcome5 %>%
   group_by(id) %>%
   slice(1) %>%
   filter(cloz.b4.scz == 0) %>%
-  select(id) #select only ID because these are people who did not receive any CLOZ before SCZ dx
+  select(id,cloz.b4.scz) #select only ID because these are people who did not receive any CLOZ before SCZ dx
 
-xoutcome5 <- inner_join(xoutcome5,outcome5) # to get back the individual prescription level
-xoutcome5 <- inner_join(first.scz.date,xoutcome5) # inner join together with scz cases to get date of first.scz.admit
+outcome5 <- left_join(outcome5,xoutcome5) # to get back the individual prescription level
 
-outcome5 <- xoutcome5 %>%
+outcome5 <- outcome5 %>%
+  filter(cloz.b4.scz == 0)
+
+outcome5 <- inner_join(first.scz.date,outcome5) %>% # inner join together with scz cases to get date of first.scz.admit
   arrange(id, date.redeem) %>%
+  group_by(id) %>%
   mutate(date.outcome5 = first(date.redeem),
          outcome5 = 1) %>%
-  group_by(id) %>%
   slice(1) %>%
   select(id, date.outcome5, outcome5)
 
