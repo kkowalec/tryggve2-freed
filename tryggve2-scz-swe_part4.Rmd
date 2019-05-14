@@ -365,6 +365,21 @@ analysis <- left_join(analysis,anyout)
 
 ```
 
+### Step 5c: Fixes to analysis dataframe
+```{r}
+analysis <- analysis %>%
+  mutate(fhx.scz=ifelse(is.na(fhx.scz),0,fhx.scz),
+         sex = ifelse(sex==1, "M", "F"),
+         sui.pre.scz=ifelse(is.na(sui.pre.scz),0,sui.pre.scz),
+         sui.childhood=ifelse(is.na(sui.childhood),0,sui.childhood),
+         intdis.pre.scz=ifelse(is.na(intdis.pre.scz),0,intdis.pre.scz),
+         intdis.childhood=ifelse(is.na(intdis.childhood),0,intdis.childhood),
+         infect.type=ifelse(is.na(infect.type),"no infect",infect.type))
+
+analysis$sex <- as.factor(analysis$sex)
+analysis$infect.type <- as.factor(analysis$infect.type)
+```
+
 ### Step 6: Descriptive tables
 ```{r}
 # only for composite outcomes, not for specific outcomes        
@@ -654,41 +669,152 @@ df <- outcomes %>%
   arrange(desc(n))
 
 ```
-### Step 7: Logistic regression-specific outcomes
+### Step 7: Logistic regression-composite outcome
 ```{r}
-analysis <- analysis %>%
-  mutate(fhx.scz=ifelse(is.na(fhx.scz),0,fhx.scz),
-         sex = ifelse(sex==1, "M", "F"),
-         sui.pre.scz=ifelse(is.na(sui.pre.scz),0,sui.pre.scz),
-         sui.childhood=ifelse(is.na(sui.childhood),0,sui.childhood),
-         intdis.pre.scz=ifelse(is.na(intdis.pre.scz),0,intdis.pre.scz),
-         intdis.childhood=ifelse(is.na(intdis.childhood),0,intdis.childhood),
-         infect.type=ifelse(is.na(infect.type),"no infect",infect.type))
+exp(cbind("Odds ratio" = coef(glm(outcome_yn ~ sex, data=analysis, family="binomial")), confint.default(glm(outcome_yn ~ sex, data=analysis, family="binomial"), level = 0.95))) -> row1
 
-analysis$sex <- as.factor(analysis$sex)
-analysis$infect.type <- as.factor(analysis$infect.type)
+exp(cbind("Odds ratio" = coef(glm(outcome_yn ~ age.first.scz, data=analysis, family="binomial")), confint.default(glm(outcome_yn ~ age.first.scz, data=analysis, family="binomial"), level = 0.95))) -> row2
 
-# Multivariable model - suicide
-suicide <- glm(suicide_yn ~ sex + age.first.scz + infect.pre.scz +
-                  psych_pre.scz + EduYr.id + fhx.scz,
-               data = analysis, family = "binomial")
-summary(suicide)
-exp(cbind("Odds ratio" = coef(suicide), confint.default(suicide, level = 0.95)))
+exp(cbind("Odds ratio" = coef(glm(outcome_yn ~ bip.pre.scz, data=analysis, family="binomial")), confint.default(glm(outcome_yn ~ bip.pre.scz, data=analysis, family="binomial"), level = 0.95))) -> row3
 
-# Multivariable model - premature death
-pdeath <- glm(pd_yn ~ sex + age.first.scz + infect.pre.scz +
-                  psych_pre.scz + EduYr.id + fhx.scz,
-               data = analysis, family = "binomial")
-summary(pdeath)
-exp(cbind("Odds ratio" = coef(pdeath), confint.default(pdeath, level = 0.95)))
+exp(cbind("Odds ratio" = coef(glm(outcome_yn ~ anx.pre.scz, data=analysis, family="binomial")), confint.default(glm(outcome_yn ~ anx.pre.scz, data=analysis, family="binomial"), level = 0.95))) -> row4
 
-# Multivariable model - hsp
-hsp <- glm(hsp_yn ~ sex + age.first.scz + infect.pre.scz +
-                  psych_pre.scz + EduYr.id + fhx.scz + birthyear,
-               data = analysis, family = "binomial")
-summary(hsp)
-exp(cbind("Odds ratio" = coef(hsp), confint.default(hsp, level = 0.95)))
+exp(cbind("Odds ratio" = coef(glm(outcome_yn ~ ptsd.pre.scz, data=analysis, family="binomial")), confint.default(glm(outcome_yn ~ ptsd.pre.scz, data=analysis, family="binomial"), level = 0.95))) -> row5
 
+exp(cbind("Odds ratio" = coef(glm(outcome_yn ~ adhd.pre.scz, data=analysis, family="binomial")), confint.default(glm(outcome_yn ~ adhd.pre.scz, data=analysis, family="binomial"), level = 0.95))) -> row6
+
+exp(cbind("Odds ratio" = coef(glm(outcome_yn ~ ed.pre.scz, data=analysis, family="binomial")), confint.default(glm(outcome_yn ~ ed.pre.scz, data=analysis, family="binomial"), level = 0.95))) -> row7
+
+exp(cbind("Odds ratio" = coef(glm(outcome_yn ~ sui.pre.scz, data=analysis, family="binomial")), confint.default(glm(outcome_yn ~ sui.pre.scz, data=analysis, family="binomial"), level = 0.95))) -> row8
+
+exp(cbind("Odds ratio" = coef(glm(outcome_yn ~ suds.pre.scz, data=analysis, family="binomial")), confint.default(glm(outcome_yn ~ suds.pre.scz, data=analysis, family="binomial"), level = 0.95))) -> row9
+
+exp(cbind("Odds ratio" = coef(glm(outcome_yn ~ ocd.pre.scz, data=analysis, family="binomial")), confint.default(glm(outcome_yn ~ ocd.pre.scz, data=analysis, family="binomial"), level = 0.95))) -> row10
+
+exp(cbind("Odds ratio" = coef(glm(outcome_yn ~ asd.pre.scz, data=analysis, family="binomial")), confint.default(glm(outcome_yn ~ asd.pre.scz, data=analysis, family="binomial"), level = 0.95))) -> row11
+
+exp(cbind("Odds ratio" = coef(glm(outcome_yn ~ mdd.pre.scz, data=analysis, family="binomial")), confint.default(glm(outcome_yn ~ mdd.pre.scz, data=analysis, family="binomial"), level = 0.95))) -> row12
+
+exp(cbind("Odds ratio" = coef(glm(outcome_yn ~ ai.pre.scz, data=analysis, family="binomial")), confint.default(glm(outcome_yn ~ ai.pre.scz, data=analysis, family="binomial"), level = 0.95))) -> row13
+
+exp(cbind("Odds ratio" = coef(glm(outcome_yn ~ cancer.pre.scz, data=analysis, family="binomial")), confint.default(glm(outcome_yn ~ cancer.pre.scz, data=analysis, family="binomial"), level = 0.95))) -> row14
+
+exp(cbind("Odds ratio" = coef(glm(outcome_yn ~ congen.malform, data=analysis, family="binomial")), confint.default(glm(outcome_yn ~ congen.malform, data=analysis, family="binomial"), level = 0.95))) -> row15
+
+exp(cbind("Odds ratio" = coef(glm(outcome_yn ~ intdis.pre.scz, data=analysis, family="binomial")), confint.default(glm(outcome_yn ~ intdis.pre.scz, data=analysis, family="binomial"), level = 0.95))) -> row16
+
+exp(cbind("Odds ratio" = coef(glm(outcome_yn ~ large_munc_sczdx, data=analysis, family="binomial")), confint.default(glm(outcome_yn ~ large_munc_sczdx, data=analysis, family="binomial"), level = 0.95))) -> row17
+
+exp(cbind("Odds ratio" = coef(glm(outcome_yn ~ relevel(infect.type,5), data=analysis, family="binomial")), confint.default(glm(outcome_yn ~ relevel(infect.type,5), data=analysis, family="binomial"), level = 0.95))) -> row18
+
+exp(cbind("Odds ratio" = coef(glm(outcome_yn ~ EduYr.id, data=analysis, family="binomial")), confint.default(glm(outcome_yn ~ EduYr.id, data=analysis, family="binomial"), level = 0.95))) -> row19
+
+exp(cbind("Odds ratio" = coef(glm(outcome_yn ~ fhx.scz, data=analysis, family="binomial")), confint.default(glm(outcome_yn ~ fhx.scz, data=analysis, family="binomial"), level = 0.95))) -> row20
+
+exp(cbind("Odds ratio" = coef(glm(outcome_yn ~ birthyear, data=analysis, family="binomial")), confint.default(glm(outcome_yn ~ birthyear, data=analysis, family="binomial"), level = 0.95))) -> row21
+
+rbind(row1,row2,row3,row4,row5,row6,row7,row8,row9,row10,row11,row12,row13,row14, row15,
+      row16,row17,row18,row19,row20,row21) -> log.uni  
+
+rm(row1,row2,row3,row4,row5,row6,row7,row8,row9,row10,row11,row12,row13,row14,row15,
+      row16,row17,row18,row19,row20,row21)
+
+unadj <- as_tibble(log.uni,validate=TRUE,rownames=NA) %>% 
+  rownames_to_column("Predictor") %>%
+  filter(Predictor!="(Intercept)") %>%
+  mutate(adj=0)  %>%
+  rename("OR"="Odds ratio","OR_lower"="2.5 %", "OR_upper"="97.5 %")
+  
+# Log regression - adjusted
+log.multi <- exp(cbind("Odds ratio" = coef(glm(outcome_yn ~ sex + age.first.scz +
+                             bip.pre.scz + anx.pre.scz + ptsd.pre.scz + adhd.pre.scz +
+                             ed.pre.scz + sui.pre.scz + suds.pre.scz + ocd.pre.scz +
+                             asd.pre.scz + mdd.pre.scz + ai.pre.scz + cancer.pre.scz +
+                             congen.malform + intdis.pre.scz + 
+                             large_munc_sczdx + relevel(infect.type,5) + EduYr.id + 
+                            fhx.scz, data=analysis, family="binomial")), 
+                       confint.default(glm(outcome_yn ~ sex + age.first.scz +
+                             bip.pre.scz + anx.pre.scz + ptsd.pre.scz + adhd.pre.scz +
+                             ed.pre.scz + sui.pre.scz + suds.pre.scz + ocd.pre.scz +
+                             asd.pre.scz + mdd.pre.scz + ai.pre.scz + cancer.pre.scz +
+                             congen.malform + intdis.pre.scz + 
+                             large_munc_sczdx + relevel(infect.type,5) + EduYr.id + fhx.scz, data=analysis, family="binomial"), level = 0.95)))
+
+log.adj <- as_tibble(log.multi,validate=TRUE,rownames=NA) %>% 
+  rownames_to_column("Predictor") %>%
+  filter(Predictor!="(Intercept)") %>%
+  mutate(adj=1)  %>%
+  rename("OR"="Odds ratio","OR_lower"="2.5 %", "OR_upper"="97.5 %")
+  
+res <- rbind(unadj, log.adj)
+
+res <- res %>%
+  mutate(Predictor = case_when(Predictor=="sexM" ~ "Male sex",
+                                Predictor=="EduYr.id" ~ "EduYears",
+                                Predictor=="relevel(infect.type, 5)gastrointestinal"~"gastrointestinfect.pre.scz",
+                                Predictor=="relevel(infect.type, 5)genital"~"genitalinfect.pre.scz",
+                                Predictor=="relevel(infect.type, 5)hepatitis"~"hepatitis.pre.scz",
+                                Predictor=="relevel(infect.type, 5)CNS"~"CNSinfect.pre.scz",
+                                Predictor=="relevel(infect.type, 5)otitis media"~"earinfect.pre.scz",
+                                Predictor== "relevel(infect.type, 5)respiratory"~"respiratoryinfec.pre.scz",
+                                Predictor=="relevel(infect.type, 5)sepsis"~"sepsis.pre.scz",
+                                Predictor== "relevel(infect.type, 5)skin"~"skininfect.pre.scz",
+                                Predictor== "relevel(infect.type, 5)urological"~"urologicalinfect.pre.scz",
+                                Predictor=="large_munc_sczdx"~"urban.first.scz",
+                                Predictor=="ai.pre.scz"~"autoimmune.pre.scz",
+                                TRUE~Predictor))
+
+                     
+# plot OR and 95%CI
+# Create labels for plot
+                  
+res$Predictor <- factor(res$Predictor, levels=rev(c("Male sex",
+                                                      "age.first.scz",
+                                                      "urban.first.scz",
+                                                      "EduYears",
+                                                      "fhx.scz",
+                                                      "bip.pre.scz",
+                                                      "mdd.pre.scz",
+                                                      "anx.pre.scz",
+                                                      "ptsd.pre.scz",
+                                                      "adhd.pre.scz",
+                                                      "asd.pre.scz",
+                                                      "ed.pre.scz",
+                                                      "sui.pre.scz",
+                                                      "suds.pre.scz",
+                                                      "ocd.pre.scz",
+                                                      "congen.malform",
+                                                      "intdis.pre.scz",
+                                                      "autoimmune.pre.scz",
+                                                      "cancer.pre.scz",
+                                                      "gastrointestinfect.pre.scz",
+                                                      "genitalinfect.pre.scz",
+                                                      "hepatitis.pre.scz",
+                                                      "CNSinfect.pre.scz",
+                                                      "earinfect.pre.scz",
+                                                      "respiratoryinfec.pre.scz",
+                                                      "skininfect.pre.scz",
+                                                      "sepsis.pre.scz",
+                                                      "urologicalinfect.pre.scz",
+                                                      "birthyear"
+                                                  )))
+
+# put both unadjusted and adjusted estimates into facets, side by side
+labels <- c(0 == "unadjusted (N=13806)", 1 == "adjusted (N=13450, event=6711)")
+
+fig2 <- ggplot(data=res) +
+  geom_pointrange(aes(x=Predictor, y="OR", ymin="OR_lower", ymax="OR_upper", col=as.factor(adj))) +
+  facet_grid(cols = vars(adj), labeller = labeller(adj=labels)) + 
+  geom_hline(yintercept=1, lty=3) +  # add a dotted line at x=1 after flip
+  coord_flip() +  # flip coordinates (puts labels on y axis)
+  labs(title = "Predictors of poor outcome in SCZ (birth cohort: 1958 to 1993)",
+       x="", y="Odds Ratio (95% CI)") +
+  theme_bw() +
+  theme(legend.position="none") +
+  scale_y_continuous(limits=c(0,2))
+
+
+#ggsave(file="~/Documents/projects/5.tryggve2/tryggve2/paper1/fig_all_14may19.png",fig2, width=8, height=6)
 
 
 ```
@@ -754,7 +880,7 @@ res <- res %>%
                               predictors=="relevel(infect.type, 5)gastrointestinal"~"gastrointestinfect.pre.scz",
     predictors=="relevel(infect.type, 5)genital"~"genitalinfect.pre.scz",
                         predictors=="relevel(infect.type, 5)hepatitis"~"hepatitis.pre.scz",
-                        predictors=="relevel(infect.type, 5)CNS"~"CNVinfect.pre.scz",
+                        predictors=="relevel(infect.type, 5)CNS"~"CNSinfect.pre.scz",
                         predictors=="relevel(infect.type, 5)otitis media"~"earinfect.pre.scz",
                        predictors== "relevel(infect.type, 5)respiratory"~"respiratoryinfec.pre.scz",
                         predictors=="relevel(infect.type, 5)sepsis"~"sepsis.pre.scz",
@@ -790,7 +916,7 @@ res$predictors <- factor(res$predictors, levels=rev(c("Male sex",
                                                       "gastrointestinfect.pre.scz",
                                                       "genitalinfect.pre.scz",
                                                       "hepatitis.pre.scz",
-                                                      "CNVinfect.pre.scz",
+                                                      "CNSinfect.pre.scz",
                                                       "earinfect.pre.scz",
                                                       "respiratoryinfec.pre.scz",
                                                       "skininfect.pre.scz",
@@ -879,7 +1005,7 @@ res <- res %>%
                               predictors=="relevel(infect.type, 5)gastrointestinal"~"gastrointestinfect.pre.scz",
     predictors=="relevel(infect.type, 5)genital"~"genitalinfect.pre.scz",
                         predictors=="relevel(infect.type, 5)hepatitis"~"hepatitis.pre.scz",
-                        predictors=="relevel(infect.type, 5)CNS"~"CNVinfect.pre.scz",
+                        predictors=="relevel(infect.type, 5)CNS"~"CNSinfect.pre.scz",
                         predictors=="relevel(infect.type, 5)otitis media"~"earinfect.pre.scz",
                        predictors== "relevel(infect.type, 5)respiratory"~"respiratoryinfec.pre.scz",
                         predictors=="relevel(infect.type, 5)sepsis"~"sepsis.pre.scz",
@@ -914,7 +1040,7 @@ res$predictors <- factor(res$predictors, levels=rev(c("Male sex",
                                                       "gastrointestinfect.pre.scz",
                                                       "genitalinfect.pre.scz",
                                                       "hepatitis.pre.scz",
-                                                      "CNVinfect.pre.scz",
+                                                      "CNSinfect.pre.scz",
                                                       "earinfect.pre.scz",
                                                       "respiratoryinfec.pre.scz",
                                                       "skininfect.pre.scz",
@@ -1003,7 +1129,7 @@ res <- res %>%
                               predictors=="relevel(infect.type, 5)gastrointestinal"~"gastrointestinfect.pre.scz",
     predictors=="relevel(infect.type, 5)genital"~"genitalinfect.pre.scz",
                         predictors=="relevel(infect.type, 5)hepatitis"~"hepatitis.pre.scz",
-                        predictors=="relevel(infect.type, 5)CNS"~"CNVinfect.pre.scz",
+                        predictors=="relevel(infect.type, 5)CNS"~"CNSinfect.pre.scz",
                         predictors=="relevel(infect.type, 5)otitis media"~"earinfect.pre.scz",
                        predictors== "relevel(infect.type, 5)respiratory"~"respiratoryinfec.pre.scz",
                         predictors=="relevel(infect.type, 5)sepsis"~"sepsis.pre.scz",
@@ -1038,7 +1164,7 @@ res$predictors <- factor(res$predictors, levels=rev(c("Male sex",
                                                       "gastrointestinfect.pre.scz",
                                                       "genitalinfect.pre.scz",
                                                       "hepatitis.pre.scz",
-                                                      "CNVinfect.pre.scz",
+                                                      "CNSinfect.pre.scz",
                                                       "earinfect.pre.scz",
                                                       "respiratoryinfec.pre.scz",
                                                       "skininfect.pre.scz",
@@ -1123,7 +1249,7 @@ res <- res %>%
                                 predictors=="relevel(infect.type, 5)gastrointestinal"~"gastrointestinfect.pre.scz",
                                 predictors=="relevel(infect.type, 5)genital"~"genitalinfect.pre.scz",
                                 predictors=="relevel(infect.type, 5)hepatitis"~"hepatitis.pre.scz",
-                                predictors=="relevel(infect.type, 5)CNS"~"CNVinfect.pre.scz",
+                                predictors=="relevel(infect.type, 5)CNS"~"CNSinfect.pre.scz",
                                 predictors=="relevel(infect.type, 5)otitis media"~"earinfect.pre.scz",
                                 predictors== "relevel(infect.type, 5)respiratory"~"respiratoryinfec.pre.scz",
                                 predictors=="relevel(infect.type, 5)sepsis"~"sepsis.pre.scz",
@@ -1158,7 +1284,7 @@ res$predictors <- factor(res$predictors, levels=rev(c("Male sex",
                                                       "gastrointestinfect.pre.scz",
                                                       "genitalinfect.pre.scz",
                                                       "hepatitis.pre.scz",
-                                                      "CNVinfect.pre.scz",
+                                                      "CNSinfect.pre.scz",
                                                       "earinfect.pre.scz",
                                                       "respiratoryinfec.pre.scz",
                                                       "skininfect.pre.scz",
@@ -1243,7 +1369,7 @@ res <- res %>%
                                 predictors=="relevel(infect.type, 5)gastrointestinal"~"gastrointestinfect.pre.scz",
                                 predictors=="relevel(infect.type, 5)genital"~"genitalinfect.pre.scz",
                                 predictors=="relevel(infect.type, 5)hepatitis"~"hepatitis.pre.scz",
-                                predictors=="relevel(infect.type, 5)CNS"~"CNVinfect.pre.scz",
+                                predictors=="relevel(infect.type, 5)CNS"~"CNSinfect.pre.scz",
                                 predictors=="relevel(infect.type, 5)otitis media"~"earinfect.pre.scz",
                                 predictors== "relevel(infect.type, 5)respiratory"~"respiratoryinfec.pre.scz",
                                 predictors=="relevel(infect.type, 5)sepsis"~"sepsis.pre.scz",
@@ -1278,7 +1404,7 @@ res$predictors <- factor(res$predictors, levels=rev(c("Male sex",
                                                       "gastrointestinfect.pre.scz",
                                                       "genitalinfect.pre.scz",
                                                       "hepatitis.pre.scz",
-                                                      "CNVinfect.pre.scz",
+                                                      "CNSinfect.pre.scz",
                                                       "earinfect.pre.scz",
                                                       "respiratoryinfec.pre.scz",
                                                       "skininfect.pre.scz",
