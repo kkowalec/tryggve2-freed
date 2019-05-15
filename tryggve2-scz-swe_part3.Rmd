@@ -196,22 +196,8 @@ scz.hdr.ex <- fread("/Volumes/Common/projects/S3/S3_Research/tryggve2/tryggve_ps
          admit.date = ymd(as.character(admit.date))) %>%
   filter(grepl("^9", ward.code)) 
 
-# leave this for now 
-# info for psych.care variable
-# A	Voluntary (1982: 763)
-# B	Voluntary inpatient, ongoing compulsory outpatient (1991: 1128)
-# C	Voluntary inpatient, ongoing forensic outpatient (1991: 1129)
-# D	Compulsory inpatient (1991: 1128)
-# E	Forensic inpatient, with special discharge trial (1991:1129)
-# F	Forensic inpatient, without special discharge trial (1991:1129)
-# G	Forensic inpatient, other (1991:1129)
-# H Compulsory outpatient (1991: 1128)
-# I	Forensic outpatient, with special discharge trial (1991:1129)
-# J	Forensic outpatient, without special discharge trial (1991:1129)
-# K	Retention
-
 # only want to look at SCZ specific admissions but want time in hospital
-scz.hdr <- scz.hdr %>%
+scz.hdr.in <- scz.hdr %>%
   filter((icd.version != 10 & substr(diagnosis,1,3) == "295") |
           (icd.version == 10 & substr(diagnosis,1,3) == "F20") |
            (icd.version == 10 & substr(diagnosis,1,3) == "F25")) %>%
@@ -222,31 +208,34 @@ scz.hdr.ex <- scz.hdr.ex %>%
   select(id,admit.num,ward.code,admit.days) %>%
   arrange(admit.num, id)
 
-scz.hdr <- left_join(scz.hdr, scz.hdr.ex)
+scz.hdr.new <- left_join(scz.hdr.in, scz.hdr.ex) %>% # join to get # days admitted
+  filter(!is.na(ward.code)) # keeps only MVO=9 admissions
 
-scz.hdr <- scz.hdr %>%
-  filter(!is.na(ward.code))
+scz.hdr.new <- inner_join(first.scz.date,scz.hdr.new) # inner join together with scz cases to get date of first.scz.admit
 
-scz.hdr <- inner_join(first.scz.date,scz.hdr) # inner join together with scz cases to get date of first.scz.admit
-
-scz.hdr <- scz.hdr %>%
+# select only those in the analysis cohort (birth cohort) - want to get an idea
+# of number of hospitlisations but only for those in birth cohort
+cohort <- analysis %>% # generated in *_part4.rmd
+  select(id) %>%
+  mutate(studypop=1)
+xscz.hdr.new <- inner_join(cohort,scz.hdr.new) %>%
   mutate(admit.days_tiles = ntile(admit.days, 10))
 
-#median value in highest decile is 602 days
-#how many ppl fit this criteria? there are about 6500 people in each decile
-# how about defining as first instance that someone has admission for 100 days
+# median value in highest decile is 229 days when selected to only study cohort
+# how about defining as first instance that someone has admission for 100 days?
+# not specific enough
+# how about defining as first instance that someone has admission for 200 days?
 
-outcome4 <- scz.hdr %>%
+outcome4 <- scz.hdr.new %>%
   mutate(admit.date = ymd(as.character(admit.date))) %>%
   filter(admit.date > first_scz_date) %>% # remove hospitalisations before first scz contact or equal to first contact
-  filter(admit.days > 100) %>% # keep any hospitalisations > 100 days
+  filter(admit.days > 200) %>% # keep any hospitalisations > 200 days
   arrange(id, admit.date) %>%
   group_by(id) %>%
-  mutate(date.outcome4 = first(admit.date),
-         outcome4 = 1) %>%
+  mutate(date.outcome4.new = first(admit.date),
+         outcome4.new = 1) %>%
   slice(1) %>%
-  select(id, date.outcome4, outcome4)
-
+  select(id, date.outcome4.new, outcome4.new)
 
 scz <- left_join(scz, outcome4)
 rm(outcome4)

@@ -1,0 +1,206 @@
+---
+title: "Tryggve2 - Schizophrenia - Sweden - Part 5"
+author: "Kaarina Kowalec, kaarina.kowalec@ki.se"
+date: "May 2019"
+output: 
+  html_document: 
+    fig_caption: yes
+    theme: simplex
+    highlight: zenburn
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+### Motivation and Overview
+
+Examine variables associated with poor outcomes in schizophrenia, using first,
+the Swedish National Registers. In this report, I will present some initial
+coding for the analyses.
+
+**Overview**
+
+1. Import data
+2. Create a dataframe with all necessary variables including exposures and 
+outcomes
+3. Analyses (Covered by this RMD)
+
+***
+
+### Step 0: Load R packages
+```{r R packages}
+library(tidyverse)
+library(psych)
+set.seed(1)
+Sys.setenv(TZ="Europe/Stockholm")
+```
+## Factor Analysis
+### Step 1: Exploratory Factor Analysis
+```{r}
+sub <- analysis %>%
+  select(suicide_yn,pd_yn,hsp_yn,trs_yn)
+
+# Conduct a single-factor EFA
+EFA_model <- fa(sub)
+
+# View the results
+# loadings range from -1 to +1
+EFA_model$loadings
+
+fa.diagram(EFA_model)
+
+head(EFA_model$scores)
+
+plot(density(EFA_model$scores, na.rm = TRUE), 
+    main = "Factor Scores")
+
+summary(EFA_model$scores)
+
+cor.test(rowSums(sub), EFA_model$scores)   # I quickly checked that the rowSums and factor scores - super correlated
+#	Pearson's product-moment correlation
+
+#data:  rowSums(sub) and EFA_model$scores
+#t = 115.97, df = 13804, p-value < 2.2e-16
+#alternative hypothesis: true correlation is not equal to 0
+#95 percent confidence interval:
+# 0.6939486 0.7108487
+#sample estimates:
+ #     cor 
+#0.7024977 
+# correlation matrix using lowerCor() function in psych package
+
+# How many dimensions to use
+# first compute the correlation matrix
+efa.cor <- cor(sub, use="pairwise.complete.obs")
+
+# calculate eigenvalues based on the correlation matrix
+eigenvals <- eigen(efa.cor)
+
+# check eigenvalues 
+eigenvals$values # see how many >1  (2 are >1)
+
+# can create the scree plot based on the correlation matrix
+scree(efa.cor, factors=F)
+
+# Tetrachoric correlation
+
+tetrachoric(sub)
+
+#Call: tetrachoric(x = sub, y = NULL, correct = 0.5, smooth = TRUE, 
+ #   global = TRUE, weight = NULL, na.rm = TRUE, delete = TRUE)
+#tetrachoric correlation 
+#           scd_y pd_yn hsp_y trs_y
+#suicide_yn  1.00                  
+#pd_yn       0.40  1.00            
+#hsp_yn      0.10  0.14  1.00      
+#trs_yn      0.02 -0.25  0.43  1.00
+
+# with tau of 
+#suicide_yn      pd_yn     hsp_yn     trs_yn 
+ #     1.13       1.32       0.50       0.83 
+
+
+```
+### Step 2: Split into EFA and CFA
+```{r}
+# Establish two sets of indices to split the dataset
+N <- nrow(sub)
+indices <- seq(1, N)
+indices_EFA <- sample(indices, floor((.5*N)))
+indices_CFA <- indices[!(indices %in% indices_EFA)]
+
+# Use those indices to split the dataset into halves for your EFA and CFA
+sub_EFA <- sub[indices_EFA, ]
+sub_CFA <- sub[indices_CFA, ]
+
+# Use the indices from the previous exercise to create a grouping variable
+group_var <- vector("numeric", nrow(sub))
+group_var[indices_EFA] <- 1
+group_var[indices_CFA] <- 2
+
+# Bind that grouping variable onto the gcbs dataset
+sub_grouped <- cbind(sub, group_var)
+
+# Compare stats across groups
+describeBy(sub_grouped, group = group_var)
+statsBy(sub_grouped, group = "group_var")
+```
+### Step 3: Correlations & Internal consistency
+```{r}
+# Take a look at some correlation data
+lowerCor(sub, use = "pairwise.complete.obs")
+corr.test(sub)$p
+corr.test(sub)$ci
+
+# internal consistency
+# Estimate coefficient alpha
+alpha(sub)
+# alpha coefficient = -0.06 (v poor)
+
+# Calculate split-half reliability
+splitHalf(sub)
+# split-half reliability = 0.5 (v poor) 
+
+```
+
+
+### Step 4: Other method of EFA
+```{r}
+pca <- princomp(sub)
+summary(pca)
+plot(pca)
+```
+
+
+## Cox Regression
+### Step 1: 
+```{r}
+library(survAUC)
+
+sub <- analysis %>%
+  filter(!is.na(EduYr.id)) %>%
+  filter(!is.na(large_munc_sczdx))
+
+TR <- sub[1:6578,]
+TE <- sub[6579:13157,]
+
+# all covariates
+train.fit <- coxph(Surv(time_any, outcome_yn) ~ sex + age.first.scz +
+                             bip.pre.scz + anx.pre.scz + ptsd.pre.scz + adhd.pre.scz +
+                             ed.pre.scz + sui.pre.scz + suds.pre.scz + ocd.pre.scz +
+                             asd.pre.scz + mdd.pre.scz + ai.pre.scz + cancer.pre.scz +
+                             congen.malform + intdis.pre.scz + large_munc_sczdx +
+                             relevel(infect.type,5) + EduYr.id + fhx.scz + birthyear,
+                             method="breslow", data=TR)
+lp <- predict(train.fit)
+lpnew <- predict(train.fit, newdata=TE)
+Surv.rsp <- Surv(TR$time_any, TR$outcome_yn)
+Surv.rsp.new <- Surv(TE$time_any, TE$outcome_yn)
+times <- seq(10, 1000, 10)
+AUC_CD <- AUC.cd(Surv.rsp, Surv.rsp.new, lp, lpnew, times)
+
+# specific outcome
+train.fit.2 <- coxph(Surv(time_trs, trs_yn) ~ sex + age.first.scz +
+                             bip.pre.scz + anx.pre.scz + ptsd.pre.scz + adhd.pre.scz +
+                             ed.pre.scz + sui.pre.scz + suds.pre.scz + ocd.pre.scz +
+                             asd.pre.scz + mdd.pre.scz + congen.malform + intdis.pre.scz +
+                             relevel(infect.type,5) + EduYr.id +
+                             fhx.scz + birthyear,
+                             method="breslow", data=TR)
+lp.2 <- predict(train.fit.2)
+lpnew.2 <- predict(train.fit.2, newdata=TE)
+Surv.rsp.2 <- Surv(TR$time_any, TR$outcome_yn)
+Surv.rsp.new.2 <- Surv(TE$time_any, TE$outcome_yn)
+times <- seq(10, 1000, 10)
+
+AUC_CD.2 <- AUC.cd(Surv.rsp.2, Surv.rsp.new.2, lp.2, lpnew.2, times)
+
+#PLOT
+
+plot(AUC_CD.2, col="red", type="l", ylim=c(0,1),
+     xlab="Time",ylab="AUC",
+     main="AUC", add=FALSE)
+lines(AUC_CD,col="green")
+
+```
+
