@@ -89,6 +89,9 @@ REQUIRE CHECKING ICD codes
     # ICD-10: F20 (SCZ), F25 (SAD), F231 (Acute polymorphic psychotic disorder with symptoms of schizophrenia) & F232 (Acute schizophrenia-like psychotic disorder)
 #    2) ≥2 diagnoses 
 
+# are these MVO-9?
+
+
 # select specific ICD codes
 scz.v2 <- scz %>% 
   filter(
@@ -647,7 +650,7 @@ Note:
 We are only selecting those with a date (1) before first treatment contact and (2) before age 15 years (indicating childhood):
 + comorbid somatic disorders: autoimmune, infections, cancer, CVD
 + medication use (wait on this-not sure which drugs to focus on)
-```{r year 9 grade}
+```{r hospitalisations, medical history}
 # generate a list of SCZ cases IDs, export this list and import to SAS (or where ever the original register files are) and extract the full hospital discharge register for only those SCZ cases
 
 scz.list <- scz %>%

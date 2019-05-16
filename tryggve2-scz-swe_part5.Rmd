@@ -56,7 +56,7 @@ plot(density(EFA_model$scores, na.rm = TRUE),
 
 summary(EFA_model$scores)
 
-cor.test(rowSums(sub), EFA_model$scores)   # I quickly checked that the rowSums and factor scores - super correlated
+cor.test(rowSums(sub), EFA_model$scores)   
 #	Pearson's product-moment correlation
 
 #data:  rowSums(sub) and EFA_model$scores
@@ -153,7 +153,7 @@ plot(pca)
 
 
 ## Cox Regression
-### Step 1: 
+### Step 1: Generate AUC 
 ```{r}
 library(survAUC)
 
@@ -180,7 +180,7 @@ times <- seq(10, 1000, 10)
 AUC_CD <- AUC.cd(Surv.rsp, Surv.rsp.new, lp, lpnew, times)
 
 # specific outcome
-train.fit.2 <- coxph(Surv(time_trs, trs_yn) ~ sex + age.first.scz +
+train.fit.2 <- coxph(Surv(time_hsp, hsp_yn) ~ sex + age.first.scz +
                              bip.pre.scz + anx.pre.scz + ptsd.pre.scz + adhd.pre.scz +
                              ed.pre.scz + sui.pre.scz + suds.pre.scz + ocd.pre.scz +
                              asd.pre.scz + mdd.pre.scz + congen.malform + intdis.pre.scz +
