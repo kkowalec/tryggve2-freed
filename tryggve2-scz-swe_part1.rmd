@@ -60,9 +60,8 @@ Examine variables associated with poor outcomes in schizophrenia, using first, t
 
 ### Step 0: Load R packages
 ```{r R packages}
-library(dplyr)
+library(tidyverse)
 library(data.table)
-library(ggplot2)
 library(lubridate)
 
 Sys.setenv(TZ="Europe/Stockholm")
@@ -305,7 +304,7 @@ scz <- hdr %>%
   mutate(nsczcontacts = n, n=NULL) # n=null removes the original n variable
 
 # exclusions
-bip <- scz.hdr %>%
+bip <- hdr %>%
   filter( ((icd.version==8) & grepl('^2961|^2963|^2968',diagnosis)) |
             ((icd.version==9) & grepl('^296|^269A|^269C|^2691|^296D|^2694|^296E|^2965|^296F|^2966|^296G|^2697|^269H|^2691|^26989|^269W|^26999|^269X',diagnosis)) | 
             ((icd.version==10) & grepl('^F30$|^F301|^F302|^F308|^F309|^F31|^F310|^F311|^F312|^F313|^F314|^F315|^F316|^F317|^F318|^F319',diagnosis)) ) %>%
@@ -316,7 +315,7 @@ bip <- scz.hdr %>%
   slice(1) %>%  # select the first row
   select(id, bip )
 
-suds <- scz.hdr %>%
+suds <- hdr %>%
   filter(  (icd.version==8 & grepl("^303|^3030|^3031|^3032|^3039|^304|^3040|^3041|^3042|^3043|^3044|^3045|^3046|^3047|^3048|^3049", diagnosis))
            | (icd.version==9 & grepl("^303|^303A|^303X|^304|^304A|^304B|^304C|^304D|^304D|^304E|^304F|^304G|^304H|^304W|^304X|^305A|^305X", diagnosis))
            | (icd.version==10 & grepl("^F10|^F100|^F101|^F102|^F103|^F104|^F105|^F106|^F107|^F108|^F109|^F11|^F110|^F111|^F112|^F113|^F114|^F115|^F116|^F117|^F118|^F119|
@@ -448,6 +447,5 @@ rm(migrate, emigrate) # remove migration register
 
 ### SAVE ALL THE DATA 
 ```{r save data}
-save.image(file = "../DATA/scz.part1.RData",compress = TRUE)
+save.image(file = "/Volumes/Common/projects/S3/S3_Research/tryggve2/data/scz.part1.RData",compress = TRUE)
 ```
-
